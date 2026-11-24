@@ -59,6 +59,13 @@ const jeu = {
     e = n; scene.majDecor(e); ui.fermer(); sauver(); plateforme.joie();
     ui.bulle(`Le Petit Grain de ${avant} tourne tout seul maintenant. Te voilà à ${J.nomVille(e)}, dans un petit local avec une vieille machine… comme au début ! Mais cette fois, tu as ${e.meta.etoilesF} étoile${e.meta.etoilesF > 1 ? 's' : ''} de franchise : dépense-les dans l’Héritage (carnet). ${J.villeInfo(e).desc}`, { titre: `Bienvenue à ${J.nomVille(e)} !` });
   },
+  // Le café du joueur : nom, export et import de la sauvegarde
+  renommer(nom) { e.meta.nomCafe = J.nettoyerNom(nom); scene.majDecor(e); sauver(); },
+  exporter() { sauver(); return J.exporterSauvegarde(e); },
+  importer(code) {
+    const n = J.importerSauvegarde(code); if (!n) return false;
+    e = n; scene.majDecor(e); ui.fermer(); sauver(); return true;
+  },
   nouvellePartie() {
     try { localStorage.removeItem(CLE); } catch { /* rien */ }
     e = J.nouvelEtat(); scene.majDecor(e); ui.fermer(); sauver();
@@ -166,10 +173,18 @@ const params = new URLSearchParams(location.search);
 if (!params.has('debug') || params.has('accueil')) {   // ?debug&accueil : voir l'accueil sans toucher à la vraie partie
   const acc = document.getElementById('accueil');
   const dejaJoue = e.meta.tasses > 0;
-  document.getElementById('jouer').textContent = dejaJoue ? 'Continuer' : 'Jouer';
-  document.getElementById('accueil-info').textContent = dejaJoue ? `${J.nomVille(e)} · ${fmt(e.argent)} en caisse` : '';
+  document.getElementById('jouer').textContent = dejaJoue ? 'Continuer' : 'Ouvrir mon café';
+  // Tant que le café n'a pas de nom (nouvelle partie, ou partie d'avant cette version), on le demande
+  const nouveau = !e.meta.nomCafe;
+  document.getElementById('accueil-nom').hidden = !nouveau;
+  if (nouveau && dejaJoue) document.querySelector('#accueil-nom label').textContent = 'Ton café n’a pas encore de nom : comment s’appelle-t-il ?';
+  const champ = document.getElementById('nom-cafe');
+  champ.addEventListener('keydown', ev => { if (ev.key === 'Enter') document.getElementById('jouer').click(); });
+  document.getElementById('accueil-info').textContent = dejaJoue ? `${J.nomCafe(e)} · ${J.nomVille(e)} · ${fmt(e.argent)} en caisse` : '';
   acc.hidden = false;
-  document.getElementById('jouer').onclick = () => { acc.classList.add('part'); setTimeout(() => { acc.hidden = true; }, 450); sons.clic(); enJeu = true; plateforme.jeuDebut(); };
+  document.getElementById('jouer').onclick = () => {
+    if (nouveau) { e.meta.nomCafe = J.nettoyerNom(champ.value) || J.NOM_PAR_DEFAUT; scene.majDecor(e); sauver(); champ.blur(); }
+    acc.classList.add('part'); setTimeout(() => { acc.hidden = true; }, 450); sons.clic(); enJeu = true; plateforme.jeuDebut(); };
 } else { enJeu = true; plateforme.jeuDebut(); }
 // Hors ligne : le navigateur garde une copie du jeu après la première visite
 // (pas sur CrazyGames ni itch.io : le jeu y tourne dans une iframe, c'est la plateforme qui gère le cache)

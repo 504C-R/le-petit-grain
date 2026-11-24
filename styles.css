@@ -371,3 +371,77 @@ html, body { overscroll-behavior:none; -webkit-touch-callout:none; -webkit-user-
 .hud { padding-top:max(10px, env(safe-area-inset-top)); padding-left:max(12px, env(safe-area-inset-left)); padding-right:max(12px, env(safe-area-inset-right)); }
 .bas { padding-bottom:max(12px, env(safe-area-inset-bottom)); }
 .installer { background:#FFF3D6; border:2px dashed var(--miel); border-radius:12px; padding:7px 10px; font-size:12px; font-weight:700; color:var(--cafe); margin:4px 0 8px; }
+/* Nom du café (accueil, carnet) et sauvegarde */
+.nom-cafe[hidden] { display:none; }
+.nom-cafe { width:min(100%, 320px); display:flex; flex-direction:column; gap:6px; text-align:left; }
+.nom-cafe label { font:600 15px Fredoka; color:var(--cafe); }
+.nom-cafe input, .mon-cafe input { font:700 16px Nunito; color:var(--cafe); background:var(--lait); border:2px solid var(--bord); border-radius:14px; padding:10px 12px; outline:none; -webkit-user-select:text; user-select:text; }
+.nom-cafe input:focus, .mon-cafe input:focus { border-color:var(--caramel); box-shadow:0 0 0 3px rgba(200,135,74,.2); }
+.mon-cafe { display:flex; gap:6px; }
+.mon-cafe input { flex:1; min-width:0; padding:7px 10px; }
+.sauvegarde { width:100%; margin-top:6px; }
+.sauvegarde .btn { font-size:12px; }
+#c-sauvegarde { margin:6px 0 2px; font-size:11px; }
+/* Dosage et avis clients */
+.dosage-titre { display:flex; align-items:baseline; gap:6px; margin-top:12px; }
+.dosage-titre b { font-family:Fredoka; color:var(--caramel-f); }
+.dosage-titre small { font-size:11px; font-weight:800; color:var(--cafe-doux); }
+.avis { background:#FBF3E8; border-radius:14px; padding:9px 12px; margin-bottom:8px; }
+.avis-titre { font:600 13.5px Fredoka; display:block; margin-bottom:4px; }
+.un-avis { border-top:2px dashed #EFE0CF; padding:6px 0 2px; }
+.un-avis:first-of-type { border-top:0; }
+.av-etoiles { color:var(--miel); font-size:13px; letter-spacing:1px; }
+.av-etoiles i { font-style:normal; color:#E6D5C2; }
+.un-avis p { font-size:12.5px; font-weight:700; color:var(--cafe); font-style:italic; margin:1px 0; }
+.un-avis small { font-size:10.5px; font-weight:800; color:var(--cafe-doux); }
+
+/* ---------- Téléphone : tous les écrans, du petit iPhone SE au grand écran, en portrait comme en paysage ---------- */
+button, .btn, .onglet, .deco, .boisson, .ville, .poste { touch-action:manipulation; }
+.btn.mini { min-height:34px; }
+.onglet { min-height:34px; }
+.panneau { max-height:56vh; max-height:56dvh; }
+#bulle { max-height:82vh; max-height:82dvh; overflow:auto; }
+.bas { padding-left:max(10px, env(safe-area-inset-left)); padding-right:max(10px, env(safe-area-inset-right)); }
+/* Quand un panneau est ouvert sur un écran étroit, l'en-tête se fait discret (seulement l'argent) */
+@media (orientation: portrait) {
+  body.panneau-ouvert .objectif, body.panneau-ouvert .defi, body.panneau-ouvert .puces { display:none; }
+  body.panneau-ouvert .panneau { max-height:64vh; max-height:64dvh; }
+}
+/* Petits écrans (iPhone SE, mini) */
+@media (max-width: 380px) {
+  .carte-argent { padding:7px 11px; border-radius:18px; }
+  .carte-argent b { font-size:22px; }
+  .carte-argent .ips { font-size:13.5px; }
+  .puce { font-size:11px; padding:2px 7px; }
+  .objectif, .defi { font-size:11.5px; }
+  .boutons.nav { gap:4px; }
+  .boutons.nav .btn { font-size:12.5px; padding:8px 1px; border-radius:14px; }
+  .boutons.nav .btn small { font-size:9.5px; }
+  .onglet { font-size:11px; padding:6px 1px; }
+  .carte-cat { gap:8px; padding:7px 8px 7px 7px; }
+  .carte-cat .vig { width:52px; height:52px; }
+  .deco b { font-size:9.5px; } .deco small { font-size:8.5px; }
+  .panneau { padding:10px 11px 12px; }
+}
+/* Écrans peu hauts en portrait : en-tête compact */
+@media (orientation: portrait) and (max-height: 700px) {
+  .hud { gap:5px; }
+  .carte-argent b { font-size:22px; }
+  .carte-argent small { font-size:10px; }
+  .panneau { max-height:50vh; max-height:50dvh; }
+}
+/* Téléphone en paysage (peu de hauteur) : deux colonnes serrées */
+@media (orientation: landscape) and (max-height: 500px) {
+  .hud { width:min(300px, 36vw); padding-top:max(8px, env(safe-area-inset-top)); padding-left:max(10px, env(safe-area-inset-left)); gap:5px; }
+  .bas { width:min(380px, 46vw); padding:8px max(10px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) 0; gap:6px; }
+  .panneau { max-height:calc(100vh - 78px); max-height:calc(100dvh - 78px); padding:9px 11px 11px; }
+  .boutons.nav .btn { font-size:12px; padding:6px 1px; border-radius:13px; }
+  .boutons.nav .btn small { font-size:9px; }
+  .objectif, .defi, .puce { font-size:11px; }
+  .carte-argent .droite small, .moment { font-size:9.5px; }
+  .accueil-carte { padding:10px; gap:6px; }
+}
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 759px) {
+  /* très petits paysages : on garde la mise en page portrait mais compacte */
+  .panneau { max-height:58vh; max-height:58dvh; }
+}

@@ -7,7 +7,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { prixEffectif, neige, murActuel, solActuel, formuleDuMoment, a, tierMachine, nbMachines, tierMoulin, debitStation, debitMax, panier, pleut, choisirHabitue, cafemaxOuvert, prixCappuccino, ouvert, avanceeJournee, CATALOGUE_MACHINES } from './game.js';
+import { nomCafe, prixEffectif, neige, murActuel, solActuel, formuleDuMoment, a, tierMachine, nbMachines, tierMoulin, debitStation, debitMax, panier, pleut, choisirHabitue, cafemaxOuvert, prixCappuccino, ouvert, avanceeJournee, CATALOGUE_MACHINES } from './game.js';
 import { G, VILLES, INFOS_VILLES } from './data.js';
 
 // Modèles 3D générés par Blender (tools/blender/modeles.py). Si un fichier manque, on garde les formes simples.
@@ -155,6 +155,14 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   Object.assign(soleil.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 1, far: 40 });
   soleil.shadow.bias = -0.0008;
   scene.add(soleil);
+  soleil.shadow.normalBias = .02;
+  // Lumière de contour, froide et douce, venue de l'arrière : elle détache les personnages et les meubles du fond
+  const contour = new THREE.DirectionalLight(0xC9DAFF, .45); contour.position.set(-9, 8, -10); scene.add(contour);
+  // Ombre de contact : une tache douce sous chaque personnage, pour qu'il pose bien au sol
+  const texOmbre = texture(64, 64, (g, w) => { const r = g.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2); r.addColorStop(0, 'rgba(40,25,15,.55)'); r.addColorStop(.6, 'rgba(40,25,15,.22)'); r.addColorStop(1, 'rgba(40,25,15,0)'); g.fillStyle = r; g.fillRect(0, 0, w, w); });
+  const matOmbre = new THREE.MeshBasicMaterial({ map: texOmbre, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+  const geoOmbre = new THREE.PlaneGeometry(.75, .75);
+  function ombreContact(p) { const o = new THREE.Mesh(geoOmbre, matOmbre); o.rotation.x = -Math.PI / 2; o.position.y = .015; o.renderOrder = -1; p.add(o); return o; }
 
   // ---- Textures dessinées ----
   const texSol = texture(512, 512, (g, w) => {
@@ -172,10 +180,14 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     g.fillStyle = 'rgba(90,70,40,.12)'; g.fillRect(0, h - 30, w, 30);
   });
   [texMurNeuf, texMurVieux].forEach(tx => { tx.wrapS = THREE.RepeatWrapping; tx.repeat.set(5, 1); });
-  const texEnseigne = neuve => texture(512, 128, (g, w, h) => {
+  const texEnseigne = (neuve, nom = 'Le Petit Grain') => texture(512, 128, (g, w, h) => {
     g.fillStyle = neuve ? '#4A2E1F' : '#8B7B6A'; g.beginPath(); g.roundRect(4, 4, w - 8, h - 8, neuve ? 56 : 10); g.fill();
     g.fillStyle = neuve ? '#F6EBDD' : '#D9CDBE'; g.font = `${neuve ? 600 : 500} 58px Fredoka, Nunito, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(neuve ? 'Le Petit Grain' : 'Le P tit Gra n', w / 2, h / 2 + 4);
+    // le nom du café ; sur la vieille enseigne, quelques lettres sont tombées
+    const texte = neuve ? nom : [...nom].map((c, k) => k % 4 === 3 && c !== ' ' ? ' ' : c).join('');
+    let taille = 58; g.font = `${neuve ? 600 : 500} ${taille}px Fredoka, Nunito, sans-serif`;
+    while (g.measureText(texte).width > w - 60 && taille > 22) { taille -= 2; g.font = `${neuve ? 600 : 500} ${taille}px Fredoka, Nunito, sans-serif`; }
+    g.fillText(texte, w / 2, h / 2 + 4);
     if (!neuve) { g.strokeStyle = 'rgba(60,45,30,.35)'; g.lineWidth = 3; g.beginPath(); g.moveTo(40, 20); g.lineTo(120, 100); g.stroke(); }
   });
   const texTravaux = texture(256, 128, (g, w, h) => {
@@ -266,9 +278,11 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   const ANCRES = [new THREE.Vector3(-5.0, 1.25, -1.2), new THREE.Vector3(-2.4, 2.3, -3.2), new THREE.Vector3(.4, 2.45, -1.8), new THREE.Vector3(-2.8, 1.6, 2.2)];
   const groupes = [0, 1, 2, 3].map(i => { const g = new THREE.Group(); g.userData.station = i; scene.add(g); return g; });
 
-  function perso(habit, cheveux, { tablier = false, peau = C.peau } = {}) {
-    const p = modele('personnage', { habit, cheveux, peau });
+  const PANTALONS = [0x5C4A3E, 0x3E4A5C, 0x2E2A2A, 0x6E86A8, 0x8A6A55, 0x4A5A3E, 0xB9A07A];
+  function perso(habit, cheveux, { tablier = false, peau = C.peau, pantalon = null } = {}) {
+    const p = modele('personnage', { habit, cheveux, peau, ...(pantalon ? { pantalon } : {}) });
     if (p) {
+      ombreContact(p);
       const t = p.getObjectByName('tablier'); if (t) t.visible = tablier;
       const n = k => p.getObjectByName(k);
       p.userData.membres = { bg: n('bras_g'), bd: n('bras_d'), jg: n('jambe_g'), jd: n('jambe_d'), tete: n('tete') };
@@ -631,8 +645,8 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     const mapSol = texSolDeco(solActuel(e)); if (matSol.map !== mapSol) { matSol.map = mapSol; matSol.needsUpdate = true; }
     D.tapis.visible = a(e, 'tapis'); D.cheminee.visible = a(e, 'cheminee'); D.clim.visible = a(e, 'clim'); D.chauffages.visible = a(e, 'chauffages');
     D.lustre.visible = a(e, 'lustre'); D.jukebox.visible = a(e, 'jukebox'); D.cuisine.visible = a(e, 'cuisine');
-    const cle = String(a(e, 'enseigne'));
-    if (cle !== cleEnseigne) { cleEnseigne = cle; enseigne.material.map = texEnseigne(a(e, 'enseigne')); enseigne.material.needsUpdate = true; }
+    const cle = a(e, 'enseigne') + '|' + nomCafe(e);
+    if (cle !== cleEnseigne) { cleEnseigne = cle; enseigne.material.map = texEnseigne(a(e, 'enseigne'), nomCafe(e)); enseigne.material.needsUpdate = true; }
     D.palette.visible = a(e, 'palette'); D.arriere.visible = a(e, 'arriere');
     const tm = tierMoulin(e); D.moulin0.visible = tm === 0; D.moulin1.visible = tm === 1; D.moulin2.visible = tm === 2;
     const tb = tierMachine(e), nb = nbMachines(e);
@@ -1068,7 +1082,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   function chienPour() {
     const [pelage, oreilles] = pick(PELAGES), o = modele('chien', { pelage, oreilles });
     if (!o) return null;
-    o.scale.setScalar(1.15); scene.add(o);
+    o.scale.setScalar(1.15); scene.add(o); ombreContact(o).scale.setScalar(.75);
     return { o, queue: o.getObjectByName('queue') };
   }
   function majChien(c, dt) {
@@ -1284,7 +1298,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
       // Environ un client sur huit est un habitué (s'il n'y en a pas déjà un dans la salle)
       const hab = !clients.some(x => x.habitue) && Math.random() < .13 ? choisirHabitue(e, Math.random()) : null;
       const cheveux = pick(CHEVEUX);
-      const corpsClient = hab ? perso(hab.habit, hab.cheveux, { peau: hab.peau }) : perso(pick(HABITS), cheveux, { peau: pick(PEAUX) });
+      const corpsClient = hab ? perso(hab.habit, hab.cheveux, { peau: hab.peau }) : perso(pick(HABITS), cheveux, { peau: pick(PEAUX), pantalon: pick(PANTALONS) });
       if (hab) accessoire(corpsClient, hab.accessoire); else habiller(corpsClient, cheveux, e);
       const parapluie = pleut(e) && Math.random() < .75 ? accessoire(corpsClient, 'parapluie') : null;
       const c = new Marcheur(put(corpsClient, en.x, 0, en.z), 1.7 + Math.random() * .5);
@@ -1371,9 +1385,11 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
 
   redim();
   // Graphismes « beaux » (ombres, haute résolution) ou « légers » pour les petits téléphones
+  // Sur téléphone, on limite la finesse de l'image (les écrans sont très denses) : plus fluide, moins de batterie
+  const telephone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
   function qualite(haute) {
     hauteQualite = haute;
-    renderer.setPixelRatio(haute ? Math.min(devicePixelRatio, 2) : 1);
+    renderer.setPixelRatio(haute ? Math.min(devicePixelRatio, telephone ? 1.6 : 2) : 1);
     renderer.shadowMap.enabled = haute;
     scene.traverse(o => { if (o.isMesh) [].concat(o.material).forEach(m => { m.needsUpdate = true; }); });
     redim();

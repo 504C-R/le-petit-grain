@@ -65,8 +65,9 @@ export function creerUI({ jeu, scene }) {
   });
 
   // ---------- Panneaux ----------
-  function ouvrir(id) { PANNEAUX.forEach(p => { $(p).hidden = p !== id; }); ouvert = id; }
-  function fermer() { PANNEAUX.forEach(p => { $(p).hidden = true; }); ouvert = null; choisie = null; }
+  // (la classe sur <body> permet d'alléger l'en-tête sur petit écran quand un panneau est ouvert)
+  function ouvrir(id) { PANNEAUX.forEach(p => { $(p).hidden = p !== id; }); ouvert = id; document.body.classList.add('panneau-ouvert'); }
+  function fermer() { PANNEAUX.forEach(p => { $(p).hidden = true; }); ouvert = null; choisie = null; document.body.classList.remove('panneau-ouvert'); }
   document.querySelectorAll('[data-fermer]').forEach(b => { b.onclick = fermer; });
   const basculer = (id, maj) => () => { if (ouvert === id) return fermer(); ouvrir(id); maj(); };
 
@@ -92,10 +93,11 @@ export function creerUI({ jeu, scene }) {
     if (J.lancerRush(e) === 'ok') toast('<b>Rush du matin !</b> Production ×2 et affluence ×1,5 pendant 30 s.');
   };
   $('b-stock').onclick = basculer('p-stock', majStock);
-  $('b-prix').onclick = basculer('p-prix', () => { $('x-curseur').value = E().prix; majPrix(); });
+  $('b-prix').onclick = basculer('p-prix', () => { $('x-curseur').value = E().prix; $('x-dose').value = E().dosage; majPrix(); });
   $('b-travaux').onclick = basculer('p-travaux', majTravaux);
   $('b-carnet').onclick = basculer('p-carnet', majCarnet);
   $('x-curseur').oninput = ev => { J.reglerPrix(E(), +ev.target.value); majPrix(); };
+  $('x-dose').oninput = ev => { J.reglerDosage(E(), +ev.target.value); majPrix(); };
 
   function majFiche() {
     const i = choisie; if (i == null) return;
@@ -131,7 +133,7 @@ export function creerUI({ jeu, scene }) {
   function majStock() {
     const e = E(), cap = J.capaciteReserve(e), tot = J.totalStock(e), b = J.bilan(e);
     $('s-jauge').style.width = Math.min(100, tot / cap * 100) + '%';
-    const reste = b.ventes > 0 ? e.stock[e.maison] / b.ventes : Infinity;
+    const reste = b.ventes > 0 ? e.stock[e.maison] / (b.ventes * J.consoParTasse(e)) : Infinity;
     $('s-desc').textContent = `Réserve : ${virg(tot / DOSES_SAC)} / ${cap / DOSES_SAC} sacs · ${isFinite(reste) ? `${G[e.maison].nom} épuisé dans ${reste > 90 ? Math.round(reste / 60) + ' min' : Math.round(reste) + ' s'}` : 'stock stable'}` + (e.st[0].manager ? ' · Gérard recommande tout seul' : '');
     $('s-liste').innerHTML = GRAINS.map(g => {
       if (!e.debloques.includes(g.id)) return `<div class="ligne verrou"><div class="infos"><h4>${g.nom}</h4><p>Qualité ${barres(g.q)} · se débloque à ${virg(g.rep)} ★</p></div></div>`;
@@ -202,6 +204,8 @@ export function creerUI({ jeu, scene }) {
         return `<div title="${7 + k} h : ${Math.round(x.ventes)} tasses"><i class="${lim}" style="height:${Math.max(3, x.ventes / max * 100)}%"></i><small>${7 + k}</small></div>`;
       }).join('') + `</div></div>`;
     }
+    // Ce que disent les clients (trois avis tirés de la journée)
+    if (b?.avis?.length) h += `<div class="avis"><b class="avis-titre">Ce que disent les clients</b>` + b.avis.map(x => `<div class="un-avis"><span class="av-etoiles">${'★'.repeat(x.etoiles)}<i>${'★'.repeat(5 - x.etoiles)}</i></span><p>« ${x.texte} »</p><small>${x.nom}</small></div>`).join('') + `</div>`;
     // Demain : la météo annoncée, et la boisson du jour à préparer
     const prev = J.CATALOGUE_METEOS[e.meteoDemain] || J.CATALOGUE_METEOS.nuages;
     const aff = prev.demande * (J.a(e, 'terrasse') ? prev.terrasse : 1) - 1;
@@ -213,7 +217,7 @@ export function creerUI({ jeu, scene }) {
           <small class="${ef > .005 ? 'vert' : ef < -.005 ? 'rouge' : ''}">${verrou ? `${virg(x.rep)} ★` : x.id === 'aucune' ? 'panier normal' : `${pct(ef)} par client`}</small></button>`;
       }).join('') + `</div></div>`;
     // Commande pour demain : on voit d'un coup d'œil si la réserve tiendra
-    const cap = J.capaciteReserve(e) / DOSES_SAC, tot = J.totalStock(e) / DOSES_SAC, hier = b ? b.tasses / DOSES_SAC : 3;
+    const cap = J.capaciteReserve(e) / DOSES_SAC, tot = J.totalStock(e) / DOSES_SAC, hier = b ? b.tasses * J.consoParTasse(e) / DOSES_SAC : 3;
     const g = G[e.maison], place = Math.max(0, Math.floor(cap - tot + 1e-6));
     const prixSac = g.prixSac * J.CATALOGUE_FOURNISSEURS[e.fournisseur].prixMult, n = Math.min(place, Math.floor(e.argent / prixSac));
     const tient = tot / Math.max(1, hier);
@@ -427,6 +431,10 @@ export function creerUI({ jeu, scene }) {
     $('x-juste').textContent = `prix juste ${fmt(pj)}`;
     $('x-clients').textContent = `${Math.round(b.demande * 60)}/min`;
     $('x-marge').innerHTML = `${fmt(e.prix - J.coutTasse(e))} <em>grain ${fmt(J.coutTasse(e))}</em>`;
+    // Dosage : goût et consommation de grain par rapport à la référence (8 g)
+    const fd = J.facteurDosage(e), k = J.consoParTasse(e);
+    $('x-dosage').textContent = `${virg(e.dosage, e.dosage % 1 ? 1 : 0)} g`;
+    $('x-dose-effet').textContent = Math.abs(k - 1) < .01 ? 'référence' : `goût ${fd >= 1 ? '+' : '−'}${Math.round(Math.abs(fd - 1) * 100)} % · grain ${k >= 1 ? '+' : '−'}${Math.round(Math.abs(k - 1) * 100)} %`;
     const av = $('x-avis');
     if (r > 1.1) { av.className = 'alerte'; av.textContent = `Trop cher (+${Math.round((r - 1) * 100)} %) : les clients fuient et la réputation baisse.`; }
     else if (r < .8) { av.className = 'alerte'; av.textContent = 'Très bon marché : beaucoup de clients, mais peu de marge.'; }
@@ -439,8 +447,24 @@ export function creerUI({ jeu, scene }) {
     if (b.dataset.ville) { villeChoisie = +b.dataset.ville; sons.clic(); majCarnet(); }
     if (b.dataset.heritage) { const r = J.acheterHeritage(E(), b.dataset.heritage); if (r === 'ok') { sons.achat(); jeu.sauver(); toast('Héritage amélioré !'); } else if (r === 'etoiles') toast('Pas assez d’étoiles de franchise.'); majCarnet(); }
   });
+  // Ton café : renommer, exporter et importer la sauvegarde
+  $('c-renommer').onclick = () => { const n = J.nettoyerNom($('c-nom').value); if (!n) return toast('Donne un nom à ton café.'); jeu.renommer(n); sons.achat(); toast(`Ton café s’appelle maintenant <b>${n}</b>.`); };
+  $('c-nom').addEventListener('keydown', ev => { if (ev.key === 'Enter') $('c-renommer').click(); });
+  $('c-exporter').onclick = async () => {
+    const code = jeu.exporter();
+    let copie = false; try { await navigator.clipboard.writeText(code); copie = true; } catch { /* presse-papier refusé */ }
+    // et un petit fichier à garder
+    try { const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([code], { type: 'text/plain' })), download: `sauvegarde-${J.nettoyerNom(J.nomCafe(E())).replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'cafe'}.txt` }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); } catch { /* pas de téléchargement */ }
+    toast(copie ? 'Sauvegarde <b>copiée</b> (et téléchargée). Garde ce code bien au chaud !' : 'Sauvegarde téléchargée. Garde ce fichier bien au chaud !', 5000); sons.clic();
+  };
+  $('c-importer').onclick = () => {
+    const code = prompt('Colle ici le code de ta sauvegarde (il commence par PG1:). Attention : la partie en cours sera remplacée.');
+    if (!code) return;
+    if (jeu.importer(code)) { sons.succes(); toast(`Sauvegarde chargée : bienvenue à <b>${J.nomCafe(E())}</b> !`); } else toast('Ce code ne ressemble pas à une sauvegarde du jeu.');
+  };
   function majCarnet() {
     const e = E(), m = e.meta;
+    if (document.activeElement !== $('c-nom')) $('c-nom').value = J.nomCafe(e);
     $('c-desc').textContent = `${m.franchises ? `${m.franchises} franchise${m.franchises > 1 ? 's' : ''} · ${m.etoilesF} étoile${m.etoilesF > 1 ? 's' : ''} de franchise (+${m.etoilesF * 10} %) · ` : ''}${Math.round(m.tasses).toLocaleString('fr-FR')} tasses servies en tout`;
     // Ta note : d'où elle vient, morceau par morceau
     const cr = J.cibleReputation(e), P = cr.parts;
@@ -457,7 +481,7 @@ export function creerUI({ jeu, scene }) {
         <small>${I.desc}</small><em>loyer ×${virg(I.loyer, 2)} · clients ×${virg(I.demande, 2)} · prix ×${virg(I.prix, 2)}</em></button>`; }).join('');
     if (J.peutFranchiser(e)) {
       const gain = J.etoilesFranchise(e), dest = VILLES[villeChoisie];
-      $('c-franchise').innerHTML = `<p><b>Le Petit Grain peut s’agrandir !</b> Ce café continue sans toi et tu repars de zéro ailleurs, avec <b>+${gain} étoile${gain > 1 ? 's' : ''} de franchise</b> (+10 % chacune, pour toujours, et à dépenser dans l’Héritage). Choisis la ville :</p><div class="villes">${villes}</div><button class="btn rouge" id="c-franchiser" style="width:100%;margin-top:8px">Ouvrir un Petit Grain à ${dest}</button>`;
+      $('c-franchise').innerHTML = `<p><b>${J.nomCafe(e)} peut s’agrandir !</b> Ce café continue sans toi et tu repars de zéro ailleurs, avec <b>+${gain} étoile${gain > 1 ? 's' : ''} de franchise</b> (+10 % chacune, pour toujours, et à dépenser dans l’Héritage). Choisis la ville :</p><div class="villes">${villes}</div><button class="btn rouge" id="c-franchiser" style="width:100%;margin-top:8px">Ouvrir ${J.nomCafe(e)} à ${dest}</button>`;
       $('c-franchiser').onclick = () => bulle(`Tu vas laisser le café de ${J.nomVille(e)} et repartir de zéro à ${dest}, avec +${gain} étoile${gain > 1 ? 's' : ''} de franchise. ${INFOS_VILLES[dest].desc} On y va ?`, {
         titre: 'Franchiser ?', boutons: [{ label: 'Pas encore', cls: 'vert' }, { label: 'On y va !', cls: 'rouge', fn: () => jeu.franchiser(villeChoisie) }] });
     } else {
@@ -568,13 +592,13 @@ export function creerUI({ jeu, scene }) {
         $('defi').className = 'defi' + (d.fini ? ' fini' : d.rate ? ' rate' : '');
       }
       if (o) { $('obj-txt').textContent = o.texte; $('obj-prime').textContent = o.prime ? '+' + fmt(J.primeObjectif(e, o)) : ''; }
-      $('nom').textContent = `Le Petit Grain · ${J.nomVille(e)}${e.meta.etoilesF ? ` · ✦${e.meta.etoilesF}` : ''}`;
+      $('nom').textContent = `${J.nomCafe(e)} · ${J.nomVille(e)}${e.meta.etoilesF ? ` · ✦${e.meta.etoilesF}` : ''}`;
       $('etoiles').innerHTML = etoilesTxt(e.rep);
       const sacs = e.stock[e.maison] / DOSES_SAC;
       let puces = `<span class="puce rouge" data-goulot>Limité par : ${res.goulot.nom}</span>`;
       puces += `<span class="puce ${sacs < 1 ? 'rouge' : sacs < 2 ? 'miel' : ''}" data-stock>${G[e.maison].court} : ${virg(sacs)} sac${sacs >= 2 ? 's' : ''}${e.commandes.length ? ' · livraison en route' : ''}</span>`;
       const cmax = Math.max(...e.calcaire); if (cmax >= .5) puces += `<span class="puce miel">Calcaire : ${Math.round(cmax * 100)} % (détartre le soir)</span>`;
-      if (J.ouvert(e) && (e.service ?? 1) < .75) puces += `<span class="puce rouge" data-goulot>Service lent : ${Math.round((e.service ?? 1) * 100)} % · la note baisse</span>`;
+      if (J.ouvert(e) && e.jour > 2 && (e.service ?? 1) < .6) puces += `<span class="puce rouge" data-goulot>Service lent : ${Math.round((e.service ?? 1) * 100)} % · la note baisse</span>`;
       const fr = J.fraicheur(e, e.maison); if (fr < .9) puces += `<span class="puce miel" data-stock>Grain rassis : −${Math.round((1 - fr) * 100)} % de goût</span>`;
       if (J.a(e, 'buse') && e.lait < LAIT.doses) puces += `<span class="puce ${e.lait <= 0 ? 'rouge' : 'miel'}" data-stock>Lait : ${e.lait <= 0 ? 'vide' : Math.round(e.lait) + ' doses'}</span>`;
       e.evts.forEach(v => { puces += `<span class="puce ${v.id === 'cafemax' ? 'rouge' : 'vert'}">${v.nom} · ${Math.ceil(v.reste)} s</span>`; });

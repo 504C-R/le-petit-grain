@@ -42,6 +42,10 @@
     <img src="assets/images/accueil.jpg" alt="Le café Le Petit Grain en fin de journée, sa terrasse et sa guirlande allumée">
     <h1>Le Petit Grain</h1>
     <p>Reprends le vieux café de mamie Odette et fais-en le meilleur café de la ville.</p>
+    <div class="nom-cafe" id="accueil-nom" hidden>
+      <label for="nom-cafe">Comment s’appellera ton café ?</label>
+      <input id="nom-cafe" maxlength="22" placeholder="Le Petit Grain" autocomplete="off" autocapitalize="words" enterkeyhint="go">
+    </div>
     <button class="btn" id="jouer">Jouer</button>
     <small id="accueil-info"></small>
   </div>
@@ -105,6 +109,9 @@
       <div class="stat"><small>Marge / tasse</small><b id="x-marge">0</b></div>
     </div>
     <p class="alerte" id="x-avis"></p>
+    <h5 class="dosage-titre">Dosage <b id="x-dosage">8 g</b> <small>par tasse</small></h5>
+    <input type="range" id="x-dose" min="7" max="11" step="0.5" value="8" aria-label="Dosage de café par tasse">
+    <div class="regle"><span>léger</span><span id="x-dose-effet">référence</span><span>corsé</span></div>
   </div>
 
   <div class="panneau" id="p-travaux" hidden>
@@ -120,6 +127,10 @@
       <div><h3>Carnet de mamie</h3><p class="desc" id="c-desc"></p></div>
       <button class="fermer" data-fermer aria-label="Fermer">✕</button>
     </div>
+    <h5>Ton café</h5>
+    <div class="mon-cafe"><input id="c-nom" maxlength="22" autocomplete="off" aria-label="Nom de ton café"><button class="btn mini" id="c-renommer">Renommer</button></div>
+    <div class="boutons sauvegarde"><button class="btn mini vert" id="c-exporter">Exporter ma sauvegarde</button><button class="btn mini" id="c-importer">Importer une sauvegarde</button></div>
+    <p class="desc" id="c-sauvegarde">Ta partie est gardée sur cet appareil. Exporte-la de temps en temps : tu obtiens un code (copié et téléchargé) pour la retrouver ailleurs ou après un nettoyage du téléphone.</p>
     <h5>Ta note</h5>
     <div class="note-detail" id="c-note"></div>
     <h5>Franchise</h5>

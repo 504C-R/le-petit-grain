@@ -3,7 +3,7 @@
 import {
   GRAINS, G, STATIONS, TRAVAUX, T, SUCCES, HISTOIRE, DOSES_SAC, SURCOUT_AUTO,
   SEUIL_FRANCHISE, SEUIL_CAFEMAX, VILLES, INFOS_VILLES, HERITAGE, OBJECTIFS, HABITUES, POURBOIRE, LAIT,
-  HORAIRES, COURBE_HEURE, MOMENTS, URGENCE, MACHINES, MOULINS, FOURNISSEURS, CHARGES, DUREE_DECISION, RESERVE, AMELIORATIONS, FRAICHEUR, RENFORTS, TARIFS, CALCAIRE, METEOS, FIABILITE_PREVISION, BOISSONS, MURS, SOLS, HARMONIE, FORMULES, MISE_EN_PLACE, DEFIS,
+  HORAIRES, COURBE_HEURE, MOMENTS, URGENCE, MACHINES, MOULINS, FOURNISSEURS, CHARGES, DUREE_DECISION, RESERVE, AMELIORATIONS, FRAICHEUR, RENFORTS, TARIFS, CALCAIRE, METEOS, FIABILITE_PREVISION, BOISSONS, MURS, SOLS, HARMONIE, FORMULES, MISE_EN_PLACE, DEFIS, DOSAGE, PRENOMS_AVIS,
 } from './data.js';
 
 const M = Object.fromEntries(MACHINES.map(m => [m.id, m]));
@@ -17,7 +17,7 @@ export { M as CATALOGUE_MACHINES, MO as CATALOGUE_MOULINS, F as CATALOGUE_FOURNI
 // ---------- État ----------
 export function nouvelleMeta() {
   return { franchises: 0, etoilesF: 0, ville: 0, succes: [], histoire: [], tasses: 0, totalGagne: 0, reparations: 0, critiques: 0, habitues: {},
-    heritage: {}, etoilesDepensees: 0, reseau: [] };
+    heritage: {}, etoilesDepensees: 0, reseau: [], nomCafe: '' };
 }
 // Statistiques d'une journée, avec le détail par moment (matin, midi, après-midi, fin de journée)
 export const nouvelleJournee = () => ({ recettes: 0, depenses: 0, charges: 0, tasses: 0,
@@ -29,7 +29,7 @@ export function nouvelEtat(meta = nouvelleMeta()) {
     version: 3,
     argent: 25 + 60 * meta.etoilesF + 400 * (meta.heritage?.capital || 0), totalRun: 0, rep: 1.2 + .25 * (meta.heritage?.bouche || 0), prix: 1.2, maison: 'premier',
     stock: Object.fromEntries(GRAINS.map(g => [g.id, g.id === 'premier' ? 3 * DOSES_SAC : 0])),
-    debloques: ['premier'], achats: [], commandes: [], livraisonsMatin: [], service: 1,
+    debloques: ['premier'], achats: [], commandes: [], livraisonsMatin: [], service: 1, dosage: DOSAGE.reference,
     machines: ['occasion', null, null], moulin: 'manivelle', fournisseur: 'grossiste', amelios: {},
     age: Object.fromEntries(GRAINS.map(g => [g.id, 0])), renforts: [0, 0, 0, 0], tarifs: [1, 1, 1, 1], calcaire: [0, 0, 0], meteo: 'nuages', meteoDemain: 'soleil', boisson: 'aucune', deco: { mur: 'creme', sol: 'parquet', vus: ['creme', 'parquet'] }, formules: {}, defi: null,
     st: STATIONS.map((_, i) => ({ niv: 1 + 5 * (meta.heritage?.equipe || 0), manager: i === 0 && !!meta.heritage?.gerard, coup: 0, panne: null })),
@@ -43,6 +43,27 @@ export function nouvelEtat(meta = nouvelleMeta()) {
     meta,
   };
 }
+// ---------- Le café du joueur : son nom, et sa sauvegarde à emporter ----------
+export const NOM_PAR_DEFAUT = 'Le Petit Grain';
+export const nomCafe = e => e.meta.nomCafe || NOM_PAR_DEFAUT;
+// Un nom propre : sans espaces en trop, sans caractères de contrôle, 22 caractères au plus
+export const nettoyerNom = s => String(s || '').replace(/[\u0000-\u001f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 22);
+// La sauvegarde en un code texte (à copier ou à garder dans un fichier) : « PG1: » + JSON en base64
+export function exporterSauvegarde(e) {
+  const octets = new TextEncoder().encode(JSON.stringify(e));
+  let bin = ''; for (let k = 0; k < octets.length; k += 8192) bin += String.fromCharCode(...octets.subarray(k, k + 8192));
+  return 'PG1:' + btoa(bin);
+}
+export function importerSauvegarde(code) {
+  try {
+    const brut = String(code || '').trim().replace(/^PG1:/, '').replace(/\s+/g, '');
+    const bin = atob(brut), octets = Uint8Array.from(bin, c => c.charCodeAt(0));
+    const d = JSON.parse(new TextDecoder().decode(octets));
+    if (!d || typeof d !== 'object' || !d.meta || typeof d.argent !== 'number') return null;
+    return restaurer(d);
+  } catch { return null; }
+}
+
 // Recharge une sauvegarde en complétant les champs manquants (et convertit les anciennes parties)
 export function restaurer(d) {
   const meta = Object.assign(nouvelleMeta(), d.meta || {});
@@ -164,7 +185,7 @@ export function ajouterStock(e, g, doses) {
   e.age[g] = s + doses > 0 ? (e.age[g] || 0) * s / (s + doses) : 0;
   e.stock[g] = s + doses;
 }
-export const qualite = e => G[e.maison].q * (1 + .006 * Math.min(e.st[1].niv, 100)) * qualiteEquipement(e) * bonusAm(e, 'recettes') * fraicheur(e, e.maison) * (1 + .06 * (e.meta?.heritage?.recettes || 0));
+export const qualite = e => G[e.maison].q * (1 + .006 * Math.min(e.st[1].niv, 100)) * qualiteEquipement(e) * bonusAm(e, 'recettes') * fraicheur(e, e.maison) * (1 + .06 * (e.meta?.heritage?.recettes || 0)) * facteurDosage(e);
 export const prixJuste = e => (1.0 + .45 * qualite(e)) * villeInfo(e).prix;
 export const villeInfo = e => INFOS_VILLES[VILLES[e.meta.ville % VILLES.length]] || INFOS_VILLES.Lyon;
 // La note visée, et d'où elle vient : le goût compte le plus, puis le service, la déco et l'équipe.
@@ -185,7 +206,17 @@ export function cibleReputation(e) {
 }
 // Héritage « contrat fournisseur » : tous les grains moins chers
 export const remiseGrains = e => 1 - .08 * (e.meta?.heritage?.contrat || 0);
-export const coutTasse = e => G[e.maison].prixSac * F[e.fournisseur].prixMult * remiseGrains(e) / DOSES_SAC;
+// ---------- Dosage ----------
+// Part d'une dose « de référence » (8 g) utilisée par tasse : à 10 g, un sac fait 20 % de tasses en moins
+export const consoParTasse = e => (e.dosage || DOSAGE.reference) / DOSAGE.reference;
+export function facteurDosage(e) {
+  const d = e.dosage || DOSAGE.reference, T = DOSAGE.gout;
+  if (d <= T[0][0]) return T[0][1];
+  for (let k = 1; k < T.length; k++) if (d <= T[k][0]) return T[k - 1][1] + (T[k][1] - T[k - 1][1]) * (d - T[k - 1][0]) / (T[k][0] - T[k - 1][0]);
+  return T[T.length - 1][1];
+}
+export function reglerDosage(e, g) { e.dosage = Math.round(Math.max(DOSAGE.min, Math.min(DOSAGE.max, g)) / DOSAGE.pas) * DOSAGE.pas; return 'ok'; }
+export const coutTasse = e => G[e.maison].prixSac * F[e.fournisseur].prixMult * remiseGrains(e) * consoParTasse(e) / DOSES_SAC;
 export function facteurPrix(e) { const r = prixEffectif(e) / prixJuste(e); return r <= 1 ? 1 + .3 * (1 - r) : Math.exp(-2.5 * (r - 1)); }
 const multEvts = e => e.evts.reduce((m, v) => m * (v.demande ?? 1), 1);
 // Affluence selon l'heure (interpolée entre les points de COURBE_HEURE)
@@ -530,6 +561,28 @@ export function choisirDecision(e, k) {
 }
 export const decisionsConnues = () => Object.keys(CARTES);
 
+// ---------- Avis clients : trois avis chaque soir, tirés de ce qui s'est vraiment passé ----------
+export function genererAvis(e, b, rnd = Math.random) {
+  const P = cibleReputation(e).parts, r = prixEffectif({ ...e, phase: 'service', horloge: 9 }) / prixJuste(e);
+  const rupture = (b.moments || []).reduce((s, m) => s + (m.stock || 0), 0), boisson = BO[e.boisson], effetB = effetBoisson(e.boisson, e.meteo);
+  const sujets = [];   // [poids (plus c'est marquant, plus c'est haut), étoiles, texte]
+  const g = P.gout / 2.2;
+  if (g > .7) sujets.push([g, 5, 'Un café incroyable, on sent la qualité du grain.']); else if (g < .35) sujets.push([1 - g, 2, 'Café plat et amer… le grain mériterait mieux.']); else sujets.push([.3, 4, 'Un bon petit café, sans chichis.']);
+  if (e.service < .6) sujets.push([1.2 - e.service, 2, 'J’ai attendu une éternité pour un espresso.']); else if (e.service > .92) sujets.push([.5, 5, 'Service rapide et souriant !']);
+  if (r > 1.12) sujets.push([r - .6, 2, 'Bon, mais bien trop cher pour ce que c’est.']); else if (r < .85) sujets.push([.6, 5, 'Pas cher du tout, j’adore !']);
+  if (rupture > 20) sujets.push([1.4, 1, 'Plus de café… dans un café ! On est repartis.']);
+  if (fraicheur(e, e.maison) < .9) sujets.push([1, 2, 'Le café avait un petit goût de rassis.']);
+  if (Math.max(...e.calcaire) > .6) sujets.push([.9, 3, 'Un drôle d’arrière-goût de calcaire, non ?']);
+  if (e.boisson !== 'aucune' && effetB > .05) sujets.push([.8, 5, `Le ${boisson.nom.toLowerCase()} du jour tombait à pic avec ce temps !`]);
+  else if (e.boisson !== 'aucune' && effetB < -.02) sujets.push([.7, 3, `Un ${boisson.nom.toLowerCase()} par ce temps ? Drôle d’idée.`]);
+  if (harmonie(e)) sujets.push([.55, 5, 'Quelle jolie salle, tout va bien ensemble.']); else if (P.deco < .2) sujets.push([.45, 3, 'La salle est un peu tristounette.']);
+  if (e.dosage >= 10) sujets.push([.5, 5, 'Un café bien corsé, comme je l’aime.']); else if (e.dosage <= 7) sujets.push([.6, 2, 'Le café manque de corps, on dirait de l’eau.']);
+  if (e.meteo === 'froid' && a(e, 'cheminee')) sujets.push([.7, 5, 'Se réchauffer près de la cheminée, le bonheur.']);
+  sujets.sort((x, y) => y[0] - x[0]);
+  const choisis = sujets.slice(0, 3);
+  return choisis.map(([, etoiles, texte], k) => ({ nom: PRENOMS_AVIS[Math.floor(rnd() * PRENOMS_AVIS.length) % PRENOMS_AVIS.length], etoiles: Math.max(1, Math.min(5, etoiles + (k === 2 && rnd() < .3 ? -1 : 0))), texte }));
+}
+
 // ---------- Défi du jour ----------
 export function tirerDefi(e, rnd = Math.random) {
   const hier = e.bilans.at(-1);
@@ -562,6 +615,7 @@ function fermer(e, rnd = Math.random) {
     if (ok) { d.fini = true; e.argent += d.prime; } else d.rate = true;
   }
   if (e.defi) b.defi = { texte: e.defi.texte, reussi: e.defi.fini, prime: e.defi.prime };
+  b.avis = genererAvis(e, b, rnd);
   // La nuit, les grains vieillissent (moitié moins vite dans la cave voûtée)
   for (const g of GRAINS) if (e.stock[g.id] > 0) e.age[g.id] = (e.age[g.id] || 0) + (a(e, 'entrepot') ? .5 : 1); else e.age[g.id] = 0;
   // Les machines s'entartrent (plus vite si elles sont peu fiables) ; Lucas détartre tout seul au-delà de 50 %
@@ -582,7 +636,7 @@ function fermer(e, rnd = Math.random) {
 }
 // Gérard commande de quoi tenir une journée comme aujourd'hui, avec une marge
 function commandesDeGerard(e) {
-  const besoin = Math.max(2 * DOSES_SAC, e.journee.tasses * 1.3) - e.stock[e.maison];
+  const besoin = Math.max(2 * DOSES_SAC, e.journee.tasses * consoParTasse(e) * 1.3) - e.stock[e.maison];
   if (besoin > 0) {
     const sacs = Math.ceil(besoin / DOSES_SAC);
     if (typeof remplir(e, e.maison, true, sacs) !== 'number' && e.stock[e.maison] <= 0) {
@@ -641,7 +695,7 @@ export function tick(e, dt, rnd = Math.random) {
   });
   // Gérard dépanne en urgence si la réserve est presque vide et que rien n'arrive
   const grainsEnRoute = e.commandes.some(c => c.grain !== 'lait');
-  const parHeure = bilan(e).ventes * HORAIRES.secondesParHeure;
+  const parHeure = bilan(e).ventes * consoParTasse(e) * HORAIRES.secondesParHeure;
   if (e.st[0].manager && e.stock[e.maison] < Math.max(.5 * DOSES_SAC, parHeure * 2) && !grainsEnRoute) {
     // Gérard anticipe : dès qu'il reste moins de 2 h de stock, il appelle le grossiste (×2) pour 4 h
     const place = Math.floor((capaciteReserve(e) - totalStock(e)) / DOSES_SAC + 1e-6);
@@ -655,8 +709,9 @@ export function tick(e, dt, rnd = Math.random) {
   if (toutVide && e.argent < G.premier.prixSac * URGENCE.mult) { ajouterStock(e, 'premier', DOSES_SAC); e.maison = 'premier'; arrivees.push({ cadeau: true }); }
 
   const b = bilan(e);
-  const ventes = Math.min(b.ventes * dt, e.stock[e.maison]);
-  e.stock[e.maison] -= ventes;
+  // chaque tasse prend un peu plus (ou moins) qu'une dose selon le dosage choisi
+  const k = consoParTasse(e), ventes = Math.min(b.ventes * dt, e.stock[e.maison] / k);
+  e.stock[e.maison] = Math.max(0, e.stock[e.maison] - ventes * k);
   if (menuLait(e)) {
     e.lait = Math.max(0, e.lait - ventes * LAIT.part);
     if (e.lait <= 0 && !e.laitVide) { e.laitVide = true; arrivees.push({ plusDeLait: true }); }
@@ -685,7 +740,8 @@ export function tick(e, dt, rnd = Math.random) {
   }
 
   // Service : la part des clients servis sans trop attendre (moyenne glissante). Si l'équipe ne suit pas, la note baisse.
-  if (b.demande > 0) e.service += (Math.min(1, b.chaine / b.demande) - e.service) * Math.min(1, dt * .02);
+  // (les clients acceptent d'attendre un peu : on compte servis ceux qu'on sert jusqu'à 1,6 fois la capacité)
+  if (b.demande > 0) e.service += (Math.min(1, b.chaine * 1.6 / b.demande) - e.service) * Math.min(1, dt * .02);
   // Réputation : tend lentement vers une cible
   e.rep += (cibleReputation(e).total - e.rep) * Math.min(1, .0018 * dt);
   for (const g of GRAINS) if (e.rep >= g.rep && !e.debloques.includes(g.id)) { e.debloques.push(g.id); arrivees.push({ debloque: g.id }); }

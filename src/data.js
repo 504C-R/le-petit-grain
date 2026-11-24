@@ -24,6 +24,10 @@ export const METEOS = [
   { id: 'froid', nom: 'Froid et neige', icone: '❄️', demande: .9, terrasse: .6, poids: 1 },
 ];
 export const FIABILITE_PREVISION = .8;
+// Dosage : grammes de café par tasse. 8 g = la référence. Plus de café = plus de goût (rendements décroissants), mais plus de grain consommé.
+export const DOSAGE = { min: 7, max: 11, pas: .5, reference: 8, gout: [[7, .86], [8, 1], [9, 1.09], [10, 1.15], [11, 1.18]] };
+// Avis clients : prénoms des auteurs (les avis sont tirés chaque soir selon la journée)
+export const PRENOMS_AVIS = ['Léa', 'Hugo', 'Chloé', 'Nathan', 'Manon', 'Lucas', 'Camille', 'Jules', 'Sarah', 'Louis', 'Inès', 'Gabriel', 'Zoé', 'Adam', 'Jade', 'Raphaël', 'Lina', 'Arthur', 'Emma', 'Malik'];
 // Formules : une offre par moment de la journée, activée le soir dans le Planning. Elle attire du monde (demande)
 // et fait dépenser plus (panier), mais coûte des ingrédients (cout, part du panier) et une mise en place chaque jour.
 export const FORMULES = [
