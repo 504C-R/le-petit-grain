@@ -17,6 +17,7 @@ try {
   const d = JSON.parse(localStorage.getItem(CLE) || 'null');
   if (d && d.version === 5) e = J.restaurer(d);
 } catch { e = J.nouvelEtat(); }
+if (e.jour > 3) { e.meta.tutoJour ??= true; e.meta.tutoSoir ??= true; }   // les parties déjà lancées sautent le tutoriel (il reste dans le carnet)
 function sauver() { try { localStorage.setItem(CLE, JSON.stringify(e)); } catch { /* stockage indisponible : on joue sans sauvegarde */ } }
 
 // ---------- Plateforme (CrazyGames, itch.io, web) ----------
@@ -39,13 +40,13 @@ const scene = await creerScene(document.getElementById('scene'), {
   surHabitue: (h, pos) => {
     const p = J.servirHabitue(e, h.id);
     if (!p) return;
-    ui.parole(pos, h.nom, h.phrases[Math.floor(Math.random() * h.phrases.length)]);
-    setTimeout(() => ui.pop(pos, '+' + fmt(p) + ' pourboire'), 400);
+    ui.parole(pos, h.nom, h.phrases[Math.floor(Math.random() * h.phrases.length)]);   // le pourboire va dans la caisse, sans s'afficher
   },
 });
 const jeu = {
   get e() { return e; },
   get vitesse() { return vitesse; },
+  get enJeu() { return enJeu; },
   set vitesse(v) { vitesse = v; },
   sauver,
   plateforme,
@@ -103,7 +104,7 @@ function evenement() {
 // ---------- Arrivées de la journée et de la nuit ----------
 function traiterArrivee(ar) {
   if (ar.fermeture) { ui.finJournee(ar.fermeture); setTimeout(() => ui.ouvrirJournal('bilan'), 600); sauver(); }
-  if (ar.ouverture) { const m = J.meteoDuJour(e), b = J.CATALOGUE_BOISSONS[e.boisson]; ui.toast(`7 h : ${J.nomCafe(e)} ouvre ! ${J.dateTexte(e)} · ${m.icone} ${m.nom}${e.boisson !== 'aucune' ? ` · boisson du jour : ${b.icone} ${b.nom}` : ''}.`, 4500); scene.majDecor(e); }
+  if (ar.ouverture) { const m = J.meteoDuJour(e), b = J.CATALOGUE_BOISSONS[e.boisson]; ui.toast(`7 h : ${J.nomCafe(e)} ouvre ! ${J.dateTexte(e)} · ${m.icone} ${m.nom}${e.boisson !== 'aucune' ? ` · boisson du jour : ${b.icone} ${b.nom}` : ''}${e.campagnes?.length ? ` · ${e.campagnes.map(c => J.CATALOGUE_MARKETING[c.id]?.icone).join('')} campagne en cours` : ''}.`, 4500); scene.majDecor(e); }
   if (ar.surpriseMeteo) setTimeout(() => ui.toast(`La météo s’est trompée : ${J.CATALOGUE_METEOS[ar.surpriseMeteo.reelle].icone} <b>${J.CATALOGUE_METEOS[ar.surpriseMeteo.reelle].nom}</b> au lieu de ${J.CATALOGUE_METEOS[ar.surpriseMeteo.prevue].nom.toLowerCase()}.`, 5000), 4600);
   if (ar.retard) ui.toast(`Le fournisseur est en retard : <b>${ar.retard.sacs} kg</b> arriveront vers midi.`, 5000);
   if (ar.decisionAuto) ui.toast(`Pas de réponse : ${ar.decisionAuto}`, 4500);
@@ -129,7 +130,7 @@ function image(dt) {
     if (ar.livraison) { scene.livraison(ar.livraison.grain, sacsVisibles(ar.livraison)); sons.livraison(); }
     if (ar.debloque) ui.toast(`Ta note grimpe : <b>${G[ar.debloque].nom}</b> est disponible dans la réserve !`, 6000);
     traiterArrivee(ar);
-    if (ar.plusDeLait) ui.toast('<b>Plus de lait !</b> Les clients reprennent des espressos. Commande du lait dans la Réserve.', 5500);
+    if (ar.plusDeLait) ui.toast('<b>Plus de lait !</b> Plus de cappuccinos : les clients reprennent des espressos. Commande du lait dans la Réserve.', 5500);
     if (ar.defiReussi) { sons.succes(); ui.toast(`⚡ Défi du jour réussi : <b>${ar.defiReussi.texte}</b> · +${fmt(ar.defiReussi.prime)}`, 5000); }
     if (ar.defiRate) ui.toast(`Défi du jour raté : ${ar.defiRate.texte}. Demain, un autre !`, 4500);
     if (ar.repli) ui.toast(`Plus de grain servi : on passe au <b>${G[ar.repli].nom}</b>. Vérifie ton prix !`, 5500);

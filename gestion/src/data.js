@@ -152,35 +152,35 @@ export const DUREE_DECISION = 40;
 
 // Achats uniques, réalisés pendant la nuit (journal du soir), chacun visible dans la salle 3D
 export const TRAVAUX = [
-  { id: 'peinture', cat: 'Déco', nom: 'Coup de peinture', prix: 800, desc: 'Adieu les murs jaunis. +0,2 ★' },
+  { id: 'peinture', cat: 'Déco', nom: 'Coup de peinture', prix: 800, desc: 'Adieu les murs jaunis : ambiance ++ (et tu pourras choisir la déco).' },
   { id: 'table3', cat: 'Salle', nom: 'Une table de plus', prix: 350, desc: '+2 places : plus de clients.' },
   { id: 'palette', cat: 'Réserve', nom: 'Palette et étagères', prix: 250, desc: 'Réserve : +40 kg de grain.' },
-  { id: 'plantes', cat: 'Déco', nom: 'Plantes vertes', prix: 300, req: ['peinture'], desc: 'Un peu de vert. +0,15 ★' },
+  { id: 'plantes', cat: 'Déco', nom: 'Plantes vertes', prix: 300, req: ['peinture'], desc: 'Un peu de vert : ambiance +.' },
   { id: 'table4', cat: 'Salle', nom: 'Encore une table', prix: 400, req: ['table3'], desc: '+2 places.' },
-  { id: 'lampes', cat: 'Déco', nom: 'Suspensions dorées', prix: 900, req: ['peinture'], desc: 'Lumière chaude. +0,15 ★' },
-  { id: 'ardoise', cat: 'Déco', nom: 'Ardoise du jour', prix: 150, req: ['peinture'], desc: 'Tes prix écrits à la craie : +0,1 ★ et +5 % de clients.' },
+  { id: 'lampes', cat: 'Déco', nom: 'Suspensions dorées', prix: 900, req: ['peinture'], desc: 'Lumière chaude : ambiance +.' },
+  { id: 'ardoise', cat: 'Déco', nom: 'Ardoise du jour', prix: 150, req: ['peinture'], desc: 'Tes prix écrits à la craie : ambiance + et +4 % de clients.' },
   { id: 'comptoir2', cat: 'Bar', nom: 'Rallonger le comptoir', prix: 3500, req: ['table3'], desc: 'Un 2e poste de machine (à équiper dans le catalogue ; il faudra un barista de plus).' },
-  { id: 'buse', cat: 'Bar', nom: 'Buse à lait et nouveau menu', prix: 1200, desc: 'Cappuccinos et lattes : 40 % des clients en prennent et paient 60 % de plus. Il faut du lait (Réserve).' },
-  { id: 'vitrine', cat: 'Bar', nom: 'Vitrine à pâtisseries', prix: 2500, req: ['peinture'], desc: 'Croissants et cookies : chaque client dépense +20 %.' },
-  { id: 'enseigne', cat: 'Déco', nom: 'Enseigne neuve', prix: 2000, req: ['peinture'], desc: 'On la voit de loin. +0,25 ★ et +10 % de clients.' },
+  { id: 'buse', cat: 'Bar', nom: 'Buse à lait et nouveau menu', prix: 1200, desc: 'Le cappuccino entre à la carte : bien plus cher qu’un espresso, beaucoup de clients le préfèrent. Il faut du lait (Réserve).' },
+  { id: 'vitrine', cat: 'Bar', nom: 'Vitrine à pâtisseries', prix: 2500, req: ['peinture'], desc: 'Croissants et cookies à la carte. Les croissants se commandent chaque soir (Réserve) ; les invendus sont jetés.' },
+  { id: 'enseigne', cat: 'Déco', nom: 'Enseigne neuve', prix: 2000, req: ['peinture'], desc: 'On la voit de loin : ambiance ++ et +12 % de clients.' },
   { id: 'arriere', cat: 'Réserve', nom: 'Arrière-boutique', prix: 6000, req: ['palette'], desc: 'Réserve : +150 kg de grain.' },
   { id: 'agrandir', cat: 'Agrandir', nom: 'Abattre la cloison', prix: 25000, req: ['table4'], desc: 'Le café double de surface : place pour 2 tables de plus et un 3e poste de machine. Loyer +1 500 € par mois.' },
   { id: 'table5', cat: 'Salle', nom: 'Table près de la fenêtre', prix: 450, req: ['agrandir'], desc: '+2 places.' },
   { id: 'table6', cat: 'Salle', nom: 'Grande table du fond', prix: 600, req: ['table5'], desc: '+2 places.' },
   { id: 'terrasse', cat: 'Agrandir', nom: 'Terrasse', prix: 8000, req: ['agrandir'], desc: '2 tables au soleil (+4 places) et +25 % d’attrait. Redevance de 400 € par mois à la mairie.' },
-  { id: 'emporter', cat: 'Bar', nom: 'Fenêtre à emporter', prix: 4500, req: ['agrandir'], desc: 'Un guichet sur la rue pour les pressés : +15 % de clients.' },
+  { id: 'emporter', cat: 'Bar', nom: 'Fenêtre à emporter', prix: 4500, req: ['agrandir'], desc: 'Un guichet sur la rue pour les pressés : +10 % de clients, et la moitié prend à emporter (moins de places assises nécessaires).' },
   { id: 'entrepot', cat: 'Réserve', nom: 'Cave voûtée', prix: 15000, req: ['arriere'], desc: 'La vieille cave remise en état : +400 kg, et le grain y vieillit deux fois moins vite.' },
-  { id: 'fresque', cat: 'Déco', nom: 'Fresque de mamie', prix: 3000, req: ['enseigne'], desc: 'Un artiste peint mamie Odette sur le mur. +0,2 ★' },
-  { id: 'velo', cat: 'Agrandir', nom: 'Livraison à vélo', prix: 6000, req: ['emporter'], desc: 'Karim et Yanis livrent le quartier : +20 % de clients.' },
-  { id: 'boutique', cat: 'Bar', nom: 'Coin boutique', prix: 9000, req: ['vitrine', 'agrandir'], desc: 'Sachets de grains et tasses à vendre : chaque client dépense +15 %.' },
+  { id: 'fresque', cat: 'Déco', nom: 'Fresque de mamie', prix: 3000, req: ['enseigne'], desc: 'Un artiste peint mamie Odette sur le mur : ambiance ++.' },
+  { id: 'velo', cat: 'Agrandir', nom: 'Livraison à vélo', prix: 6000, req: ['emporter'], desc: 'Karim et Yanis livrent le quartier : +12 % de clients.' },
+  { id: 'boutique', cat: 'Bar', nom: 'Coin boutique', prix: 9000, req: ['vitrine', 'agrandir'], desc: 'Sachets de grains et tasses à vendre : chaque client dépense +12 %.' },
   { id: 'ecole', cat: 'Équipe', nom: 'École de barista', prix: 12000, req: ['terrasse'], desc: 'Tu formes toi-même ton équipe : les formations coûtent moitié moins cher.' },
-  { id: 'tapis', cat: 'Déco', nom: 'Grand tapis persan', prix: 600, req: ['peinture'], desc: 'Un tapis moelleux sous les tables. +0,1 ★' },
-  { id: 'jukebox', cat: 'Déco', nom: 'Jukebox', prix: 2500, req: ['ardoise'], desc: 'De vieux tubes : +6 % de clients, et la musique se voit.' },
-  { id: 'cheminee', cat: 'Confort', nom: 'Cheminée', prix: 7000, req: ['peinture'], desc: 'Un vrai feu de bois. +0,1 ★, et +30 % de clients les jours de froid.' },
+  { id: 'tapis', cat: 'Déco', nom: 'Grand tapis persan', prix: 600, req: ['peinture'], desc: 'Un tapis moelleux sous les tables : ambiance +.' },
+  { id: 'jukebox', cat: 'Déco', nom: 'Jukebox', prix: 2500, req: ['ardoise'], desc: 'De vieux tubes : +5 % de clients, et la musique se voit.' },
+  { id: 'cheminee', cat: 'Confort', nom: 'Cheminée', prix: 7000, req: ['peinture'], desc: 'Un vrai feu de bois : ambiance +, et +30 % de clients les jours de froid.' },
   { id: 'clim', cat: 'Confort', nom: 'Ventilateurs et clim', prix: 6500, req: ['agrandir'], desc: 'Il fait frais chez toi : +25 % de clients les jours de canicule.' },
   { id: 'chauffages', cat: 'Confort', nom: 'Chauffages de terrasse', prix: 3000, req: ['terrasse'], desc: 'La terrasse reste pleine : la pluie et le froid la vident deux fois moins.' },
-  { id: 'lustre', cat: 'Déco', nom: 'Lustre en laiton', prix: 4000, req: ['agrandir', 'lampes'], desc: 'Huit bougies qui brillent au-dessus de la salle. +0,15 ★' },
-  { id: 'cuisine', cat: 'Bar', nom: 'Annexe-cuisine', prix: 18000, req: ['vitrine', 'agrandir'], desc: 'Une petite cuisine dans l’annexe : formules déjeuner, goûter et afterwork (onglet Planning).' },
+  { id: 'lustre', cat: 'Déco', nom: 'Lustre en laiton', prix: 4000, req: ['agrandir', 'lampes'], desc: 'Huit bougies qui brillent au-dessus de la salle : ambiance +.' },
+  { id: 'cuisine', cat: 'Bar', nom: 'Annexe-cuisine', prix: 18000, req: ['vitrine', 'agrandir'], desc: 'Une petite cuisine dans l’annexe : sandwichs et gâteaux à la carte, formules déjeuner, goûter et afterwork. Il faut quelqu’un en cuisine.' },
   { id: 'etage', cat: 'Agrandir', nom: 'Salle à l’étage', prix: 60000, req: ['terrasse'], desc: 'On ouvre l’étage : +6 places et +20 % d’attrait. Loyer +2 000 € par mois.' },
 ];
 export const T = Object.fromEntries(TRAVAUX.map(t => [t.id, t]));
@@ -270,10 +270,12 @@ export const OBJECTIFS = [
   { id: 'commande', texte: 'Commande du grain pour demain (journal du soir)', prime: 0 },
   { id: 'embauche', texte: 'Embauche quelqu’un en salle (onglet Équipe)', prime: 150 },
   { id: 'peinture', texte: 'Fais un coup de peinture (onglet Travaux)', prime: 100 },
+  { id: 'carte', texte: 'Ajoute un produit à ta carte (onglet Carte)', prime: 100 },
   { id: 'machine', texte: 'Achète une machine neuve (catalogue du soir)', prime: 250 },
   { id: 'premierMois', texte: 'Termine un mois dans le vert', prime: 500 },
+  { id: 'fidelite', texte: 'Lance la carte de fidélité (onglet Clients)', prime: 200 },
   { id: 'note35', texte: 'Atteins 3,5 ★ avec 100 avis', prime: 500 },
-  { id: 'equipe3', texte: 'Constitue une équipe de 3 personnes', prime: 800 },
+  { id: 'equipe3', texte: 'Constitue une équipe de 3 employés', prime: 800 },
   { id: 'cloison', texte: 'Abats la cloison', prime: 2000 },
   { id: 'ca15k', texte: 'Fais 15 000 € de chiffre d’affaires dans un mois', prime: 2000 },
   { id: 'terrasse', texte: 'Ouvre la terrasse', prime: 3000 },
@@ -356,3 +358,39 @@ export const VIENNOISERIES = { cout: .45, prix: 1.4, part: [.3, .1, .16, .05] };
 export const NOTE = { depart: 3, poids: .0025, perdu: 1.2, poidsPerdu: .0006 };
 // Notoriété : le bouche-à-oreille, de 0,4 (inconnu) à 2 (adresse incontournable)
 export const NOTORIETE = { depart: .4, max: 2, parClient: .00003 };
+
+// =================== La carte, le marketing et la fidélité ===================
+// La carte : chaque client prend une boisson (l’espresso, ou une autre boisson de la carte qui le remplace) et parfois un extra.
+// parts : part des clients qui le prennent, par moment (matin, midi, après-midi, soir), quand le prix est au prix juste.
+// ref : prix juste (pour les cafés : × le prix juste de l’espresso, qui suit la qualité ; sinon en euros, × la ville).
+// cout : ingrédients par unité (le grain et le lait sont comptés à part). cafe : consomme une dose de grain. lait : une dose de lait.
+// stock : vendu dans la limite du stock du jour (croissants commandés la veille). cuisine : il faut quelqu’un en cuisine.
+export const CARTE = [
+  { id: 'espresso', nom: 'Espresso', icone: '☕', type: 'boisson', cafe: true, ref: 1, cout: 0, parts: [1, 1, 1, 1], desc: 'Le café de la maison. Son prix fait venir (ou fuir) les clients : il se règle avec le bouton Prix.' },
+  { id: 'allonge', nom: 'Café allongé', icone: '🫗', type: 'boisson', cafe: true, ref: 1.2, cout: .02, parts: [.22, .18, .22, .16], depart: 1.8, actif: true, desc: 'Le même café, avec plus d’eau. Presque la même marge que l’espresso, un peu plus cher.' },
+  { id: 'cappuccino', nom: 'Cappuccino', icone: '🥛', type: 'boisson', cafe: true, lait: true, ref: 1.75, cout: 0, parts: [.3, .18, .3, .2], depart: 2.6, req: ['buse'], desc: 'Café et lait mousseux : beaucoup le préfèrent, et il se vend bien plus cher. Il faut du lait.' },
+  { id: 'the', nom: 'Thé', icone: '🫖', type: 'boisson', ref: 2.2, cout: .18, parts: [.05, .05, .13, .09], depart: 2.2, actif: true, desc: 'Pour ceux qui ne boivent pas de café : ne consomme pas de grain.' },
+  { id: 'jus', nom: 'Jus d’orange pressé', icone: '🍊', type: 'extra', ref: 3.2, cout: .75, parts: [.18, .07, .1, .07], depart: 3.2, actif: true, desc: 'Surtout le matin. Les oranges coûtent cher : surveille la marge.' },
+  { id: 'limonade', nom: 'Limonade maison', icone: '🍋', type: 'extra', ref: 3, cout: .45, parts: [.02, .07, .09, .08], depart: 3, desc: 'Fraîche et faite ici. Elle plaît à midi et l’après-midi.' },
+  { id: 'croissant', nom: 'Croissant', icone: '🥐', type: 'extra', stock: true, ref: 1.4, cout: .45, parts: [.3, .1, .16, .05], depart: 1.4, req: ['vitrine'], desc: 'Commandés le soir pour le lendemain (Réserve) : payés d’avance, les invendus sont jetés.' },
+  { id: 'cookie', nom: 'Cookie', icone: '🍪', type: 'extra', ref: 2.4, cout: .5, parts: [.02, .04, .09, .04], depart: 2.4, req: ['vitrine'], desc: 'Le petit plaisir de l’après-midi, qui se garde bien.' },
+  { id: 'gateau', nom: 'Part de gâteau', icone: '🍰', type: 'extra', cuisine: true, ref: 3.8, cout: 1, parts: [0, .05, .18, .07], depart: 3.8, req: ['cuisine'], desc: 'Le quatre-quarts de mamie. Il faut quelqu’un en cuisine.' },
+  { id: 'sandwich', nom: 'Sandwich maison', icone: '🥪', type: 'extra', cuisine: true, ref: 6, cout: 2.1, parts: [0, .32, .04, .03], depart: 6, req: ['cuisine'], desc: 'Le gros de la vente à midi. Il faut quelqu’un en cuisine.' },
+];
+// Chaque produit de plus à la carte (au-delà de 4) attire 1,5 % de clients en plus ; une carte trop courte en fait perdre.
+export const VARIETE = { reference: 4, parProduit: .015 };
+// Un client sur huit reprend une deuxième boisson (un deuxième café, un thé après le déjeuner…)
+export const DEUXIEME_TASSE = .12;
+// Marketing : des campagnes lancées le soir, qui durent quelques jours (une seule à la fois par type)
+// demande : clients en plus ; noto : notoriété gagnée tout de suite ; bouche : bouche-à-oreille plus rapide pendant la campagne
+export const MARKETING = [
+  { id: 'flyers', nom: 'Flyers dans le quartier', icone: '📄', prix: 120, jours: 3, demande: .1, noto: .02, desc: 'On glisse des flyers dans les boîtes aux lettres de la rue.' },
+  { id: 'reseaux', nom: 'Pub sur les réseaux', icone: '📱', prix: 350, jours: 7, demande: .07, bouche: .8, desc: 'De jolies photos de tes cafés : on en parle plus vite autour de soi.' },
+  { id: 'journal', nom: 'Encart dans le journal local', icone: '📰', prix: 600, jours: 1, demande: .05, noto: .12, rep: 3.2, desc: 'Une demi-page dans le journal du quartier : tout le monde connaîtra ton nom.' },
+  { id: 'radio', nom: 'Spot à la radio', icone: '📻', prix: 1500, jours: 7, demande: .18, noto: .1, rep: 3.6, desc: 'Trente secondes sur la radio locale, matin et soir, pendant une semaine.' },
+];
+// Carte de fidélité : le 10e café offert. Des clients contents s’inscrivent ; les membres reviennent plus souvent.
+// lancement : impression des cartes ; inscription : part des clients servis qui s’inscrit quand ils sont ravis ;
+// depart : part des membres qui décroche chaque jour ; bonusMax et demi : clients en plus (bonus = max × m / (m + demi)) ;
+// remise : ce que coûte le café offert, sur les achats des membres
+export const FIDELITE = { lancement: 150, inscription: .05, depart: .012, bonusMax: .15, demi: 600, remise: .1, partMax: .6 };

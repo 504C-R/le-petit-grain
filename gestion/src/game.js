@@ -6,8 +6,12 @@ import {
   HORAIRES, COURBE_HEURE, MOMENTS, URGENCE, MACHINES, MOULINS, FOURNISSEURS, DUREE_DECISION, FRAICHEUR, TARIFS, CALCAIRE,
   METEOS, FIABILITE_PREVISION, BOISSONS, MURS, SOLS, FORMULES, DEFIS, DOSAGE, PRENOMS_AVIS,
   CAPACITE, DEMANDE_BASE, RESERVE_KG, PERSONNEL, TRAITS, PRENOMS_EMPLOYES, MOIS, ENERGIE, PRETS, DECOUVERT, ARGENT_DEPART,
-  JOURS_SEMAINE, AFFLUENCE_JOUR, NOMS_MOIS, SAISONS, VIENNOISERIES, NOTE, NOTORIETE, TICKET, CONSOMMABLES,
+  JOURS_SEMAINE, AFFLUENCE_JOUR, NOMS_MOIS, SAISONS, VIENNOISERIES, NOTE, NOTORIETE, CONSOMMABLES,
+  CARTE, VARIETE, DEUXIEME_TASSE, MARKETING, FIDELITE,
 } from './data.js';
+const CA = Object.fromEntries(CARTE.map(p => [p.id, p]));
+const MK = Object.fromEntries(MARKETING.map(m => [m.id, m]));
+export { CA as CATALOGUE_CARTE, MK as CATALOGUE_MARKETING };
 
 const M = Object.fromEntries(MACHINES.map(m => [m.id, m]));
 const MO = Object.fromEntries(MOULINS.map(m => [m.id, m]));
@@ -28,10 +32,12 @@ export function nouvelleMeta() {
   return { succes: [], histoire: [], tasses: 0, totalGagne: 0, reparations: 0, critiques: 0, habitues: {}, nomCafe: '', ville: 0, clientsTotal: 0 };
 }
 export const nouvelleJournee = () => ({ recettes: 0, depenses: 0, charges: 0, tasses: 0, clients: 0, perdus: 0, satisfaction: 0,
-  viennoiseries: 0, invendus: 0,
+  viennoiseries: 0, invendus: 0, produits: {}, remises: 0,
   moments: MOMENTS.map(() => ({ t: 0, ventes: 0, station: 0, clients: 0, stock: 0, stations: [0, 0, 0, 0] })),
   heures: Array.from({ length: HORAIRES.fermeture - HORAIRES.ouverture }, () => ({ ventes: 0, recettes: 0, station: 0, clients: 0, stock: 0 })) });
-export const nouveauMois = () => ({ ca: 0, achats: 0, salaires: 0, loyer: 0, energie: 0, entretien: 0, interets: 0, impots: 0, investissements: 0 });
+export const nouveauMois = () => ({ ca: 0, achats: 0, salaires: 0, loyer: 0, energie: 0, entretien: 0, interets: 0, impots: 0, investissements: 0, marketing: 0, primes: 0 });
+// vu : le produit a déjà été proposé (ceux qui demandent un achat entrent à la carte tout seuls, la première fois)
+export const carteDepart = () => Object.fromEntries(CARTE.filter(p => p.id !== 'espresso').map(p => [p.id, { on: !!p.actif, prix: p.depart, vu: !p.req }]));
 const gerant = () => ({ id: 'toi', nom: 'Toi', role: 'barista', comp: 2, salaire: 0, trait: null, fatigue: 0, moral: 1, planning: [1, 1, 1, 1], formation: 0, heuresSemaine: 0, gerant: true });
 const candidatsDeDepart = () => [
   { id: 'c1', nom: 'Nadia', role: 'salle', comp: 2, salaire: 13.6, trait: 'souriant' },
@@ -52,10 +58,11 @@ export function nouvelEtat(meta = nouvelleMeta()) {
     age: Object.fromEntries(GRAINS.map(g => [g.id, 0])), tarifs: [1, 1, 1, 1], calcaire: [0, 0, 0],
     meteo: 'nuages', meteoDemain: 'soleil', boisson: 'aucune', deco: { mur: 'creme', sol: 'parquet', vus: ['creme', 'parquet'] }, formules: {}, defi: null,
     dosage: DOSAGE.reference, service: 1,
+    carte: carteDepart(), campagnes: [], fidelite: { active: false, membres: 0 },
     evts: [], ruptureDepuis: 0, rupturesVues: 0, lait: 0, laitVide: false,
     phase: 'service', horloge: HORAIRES.ouverture, nuitReste: 0, jour: 1,
     journee: nouvelleJournee(), bilans: [], decision: null, decisionsDuJour: [],
-    objectif: 0, stats: { coups: 0, commandes: 0, nuits: 0, embauches: 0, formations: 0, pretsRembourses: 0 },
+    objectif: 0, stats: { coups: 0, commandes: 0, nuits: 0, embauches: 0, formations: 0, pretsRembourses: 0, campagnes: 0 },
     meta,
   };
 }
@@ -86,6 +93,11 @@ export function restaurer(d) {
   e.stats = Object.assign(nouvelEtat(meta).stats, d.stats || {});
   e.mois = Object.assign(nouveauMois(), d.mois || {});
   e.journee = Object.assign(nouvelleJournee(), d.journee || {});
+  // Parties d'avant la carte : on complète produit par produit
+  e.carte = carteDepart(); for (const id in d.carte || {}) if (e.carte[id]) Object.assign(e.carte[id], d.carte[id]);
+  e.fidelite = Object.assign({ active: false, membres: 0 }, d.fidelite || {});
+  e.campagnes = Array.isArray(d.campagnes) ? d.campagnes : [];
+  if (!d.carte) nouveauxProduits(e);   // les anciennes parties gardent leurs cappuccinos et leurs croissants
   return e;
 }
 
@@ -141,7 +153,8 @@ export const HEURES_JOUR = HEURES_MOMENT.reduce((x, y) => x + y, 0);
 export const salaireMarche = comp => Math.round((PERSONNEL.smic + PERSONNEL.parNiveau * (comp - 1)) * 100) / 100;
 export const employe = (e, id) => e.equipe.find(p => p.id === id);
 export const heuresPlanifiees = p => p.formation ? 0 : p.planning.reduce((s, on, k) => s + (on ? HEURES_MOMENT[k] : 0), 0);
-export const presentA = (p, k) => !!p.planning[k] && !p.formation;
+// absent : moment à partir duquel l'employé manque aujourd'hui (malade), effacé à la fermeture
+export const presentA = (p, k) => !!p.planning[k] && !p.formation && !(p.absent != null && k >= p.absent);
 export function vitesseEmploye(p) {
   const [v0, v1] = PERSONNEL.vitesse[p.role] || PERSONNEL.vitesse.salle;
   return (v0 + v1 * p.comp) * (p.trait === 'rapide' ? 1.15 : p.trait === 'distrait' ? .92 : 1) * (1 - .45 * (p.fatigue || 0));
@@ -309,13 +322,101 @@ export function reglerFormule(e, id, actif) {
   e.formules[id] = !!actif; return 'ok';
 }
 const multFormulePanier = e => { const f = formuleDuMoment(e); return f ? 1 + f.panier - f.cout : 1; };
-export const panier = e => TICKET * prixEffectif(e) * multPrixEvts(e) * (ouvert(e) ? multBoisson(e) * multFormulePanier(e) : 1) * (a(e, 'boutique') ? 1.12 : 1) * (menuLait(e) ? 1 + LAIT.part * LAIT.bonus : 1);
-export const prixCappuccino = e => prixEffectif(e) * (1 + LAIT.bonus);
+// ---------- La carte : boissons et extras, chacun avec son prix ----------
+export const produitOuvert = (e, p) => (p.req || []).every(r => r === 'buse' ? aBuse(e) : a(e, r)) && e.rep >= (p.rep || 0);
+export const produitActif = (e, id) => id === 'espresso' || (!!e.carte?.[id]?.on && produitOuvert(e, CA[id]));
+export const prixProduit = (e, id) => id === 'espresso' ? e.prix : (e.carte?.[id]?.prix ?? CA[id].depart);
+export const prixJusteProduit = (e, id) => { const p = CA[id]; return Math.round((p.cafe ? prixJuste(e) * p.ref : p.ref * (villeInfo(e).prix || 1)) * 20) / 20; };
+export const nbProduits = e => CARTE.filter(p => produitActif(e, p.id)).length;
+export const multVariete = e => 1 + VARIETE.parProduit * (nbProduits(e) - VARIETE.reference);
+const tarifMoment = e => ouvert(e) ? (e.tarifs?.[momentIndex(e)] ?? 1) : 1;
+// Un client prend d'autant plus un produit qu'il est sous son prix juste ; au-dessus, il le boude vite
+export const attache = r => r <= 1 ? 1 + .6 * (1 - r) : Math.exp(-3 * (r - 1));
+export function regleProduit(e, id, champ, v) {
+  const p = CA[id]; if (!p || id === 'espresso') return 'indispo';
+  if (!produitOuvert(e, p)) return 'verrou';
+  if (champ === 'on') { e.carte[id].on = !!v; return 'ok'; }
+  e.carte[id].prix = Math.round(Math.max(.5, Math.min(15, v)) * 10) / 10; return 'ok';
+}
+// Après un achat (buse, vitrine, cuisine) : les nouveaux produits entrent à la carte ; renvoie leurs noms
+export function nouveauxProduits(e) {
+  const n = [];
+  for (const id in e.carte) { const c = e.carte[id]; if (!c.vu && produitOuvert(e, CA[id])) { c.vu = true; c.on = true; n.push(CA[id].nom); } }
+  return n;
+}
+// Ce que prend un client moyen au moment k : la part de chaque produit (l'espresso complète les boissons)
+export function partsCarte(e, k = momentIndex(e), service = ouvert(e)) {
+  const parts = {}; let autres = 0;
+  const cuisine = capacites(e, k).cuisine > 0;
+  for (const p of CARTE) {
+    if (p.id === 'espresso' || !produitActif(e, p.id)) continue;
+    if (p.lait && e.lait <= 0) continue;
+    if (p.cuisine && !cuisine) continue;
+    if (p.stock && service && e.viennoiseries.stock <= 0) continue;
+    parts[p.id] = p.parts[k] * attache(prixProduit(e, p.id) * (service ? tarifMoment(e) : 1) / prixJusteProduit(e, p.id));
+    if (p.type === 'boisson') autres += parts[p.id];
+  }
+  if (autres > .85) { for (const id in parts) if (CA[id].type === 'boisson') parts[id] *= .85 / autres; autres = .85; }
+  parts.espresso = 1 - autres;
+  for (const id in parts) if (CA[id].type === 'boisson') parts[id] *= 1 + DEUXIEME_TASSE;
+  return parts;
+}
+// Le prix moyen de la carte comparé aux prix justes, pondéré par ce que prennent les clients (l'espresso compte plus)
+export function ratioPrixCarte(e, parts = partsCarte(e)) {
+  let s = 0, w = 0;
+  for (const id in parts) { const p = parts[id] * (id === 'espresso' ? 1.5 : 1); s += p * prixProduit(e, id) * tarifMoment(e) / prixJusteProduit(e, id); w += p; }
+  return w > 0 ? s / w : 1;
+}
+// Multiplicateur commun à tout le ticket : événements, boisson du jour, formule, boutique, café offert aux fidèles
+export const multTicket = e => multPrixEvts(e) * (ouvert(e) ? multBoisson(e) * multFormulePanier(e) : 1) * (a(e, 'boutique') ? 1.12 : 1) * (1 - partFideles(e) * FIDELITE.remise);
+// Ticket moyen d'un client (sans les croissants, vendus dans la limite du stock)
+export function panier(e, parts = partsCarte(e)) {
+  let s = 0; for (const id in parts) if (!CA[id].stock) s += parts[id] * prixProduit(e, id);
+  return s * tarifMoment(e) * multTicket(e);
+}
+export const partGrain = (e, parts = partsCarte(e)) => Object.keys(parts).reduce((s, id) => s + (CA[id].cafe ? parts[id] : 0), 0);
+
+// ---------- Marketing et fidélité ----------
+export const campagneActive = (e, id) => (e.campagnes || []).some(c => c.id === id);
+export const multCampagnes = e => 1 + (e.campagnes || []).reduce((s, c) => s + (MK[c.id]?.demande || 0), 0);
+const multBouche = e => 1 + (e.campagnes || []).reduce((s, c) => s + (MK[c.id]?.bouche || 0), 0);
+export function lancerCampagne(e, id) {
+  const m = MK[id]; if (!m) return 'indispo';
+  if (ouvert(e)) return 'ferme';
+  if (e.rep < (m.rep || 0)) return 'verrou';
+  if (campagneActive(e, id)) return 'deja';
+  if (e.argent < m.prix) return 'argent';
+  depenser(e, m.prix, 'marketing');
+  e.campagnes.push({ id, jours: m.jours });
+  e.notoriete = Math.min(NOTORIETE.max, e.notoriete + (m.noto || 0));
+  e.stats.campagnes = (e.stats.campagnes || 0) + 1;
+  return 'ok';
+}
+export function lancerFidelite(e) {
+  if (e.fidelite.active) return 'deja';
+  if (ouvert(e)) return 'ferme';
+  if (e.argent < FIDELITE.lancement) return 'argent';
+  depenser(e, FIDELITE.lancement, 'marketing'); e.fidelite.active = true; return 'ok';
+}
+export function arreterFidelite(e) { if (!e.fidelite.active) return 'indispo'; e.fidelite.active = false; e.fidelite.membres = 0; return 'ok'; }
+export const bonusFidelite = e => e.fidelite?.active ? FIDELITE.bonusMax * e.fidelite.membres / (e.fidelite.membres + FIDELITE.demi) : 0;
+export const partFideles = e => e.fidelite?.active ? FIDELITE.partMax * bonusFidelite(e) / FIDELITE.bonusMax : 0;
+// Chaque soir : des clients ravis s'inscrivent, quelques membres décrochent (beaucoup si la journée a déçu)
+export function evolutionFidelite(e, clients, sat) {
+  if (!e.fidelite?.active) return 0;
+  const avant = e.fidelite.membres;
+  const gain = clients * FIDELITE.inscription * Math.max(0, Math.min(1, ((sat ?? 3) - 2.8) / 1.5));
+  const perte = avant * FIDELITE.depart * ((sat ?? 3) < 3 ? 3 : 1);
+  e.fidelite.membres = Math.max(0, avant + gain - perte);
+  return e.fidelite.membres - avant;
+}
+
 export function demandeParHeure(e) {
   if (!ouvert(e)) return 0;
   const f = formuleDuMoment(e);
   return DEMANDE_BASE * e.notoriete * (.4 + e.rep * .2) * attrait(e) * courbeHeure(e.horloge) * AFFLUENCE_JOUR[jourSemaine(e)] * saison(e).demande
-    * multMeteo(e) * facteurPrix(e) * (1 + (f?.demande || 0)) * multEvts(e) * (villeInfo(e).demande || 1);
+    * multMeteo(e) * facteurPrix(e) * (1 + (f?.demande || 0)) * multEvts(e) * (villeInfo(e).demande || 1)
+    * multVariete(e) * multCampagnes(e) * (1 + bonusFidelite(e));
 }
 export const demande = e => demandeParHeure(e) / SPH;
 export function bilan(e) {
@@ -346,7 +447,7 @@ export function debitStation(e, i) {
 function partsSatisfaction(e, b) {
   const gout = 1 - Math.exp(-qualite(e) / 2.5);
   const attente = b.demande > 0 ? Math.min(1, b.chaine * 1.3 / b.demande) : 1;
-  const r = prixEffectif(e) / prixJuste(e), prix = r <= 1 ? 1 : Math.max(0, 1 - (r - 1) * 2.5);
+  const r = ratioPrixCarte(e), prix = r <= 1 ? 1 : Math.max(0, 1 - (r - 1) * 2.5);
   const ambiance = Math.min(1, .35 + bonusDeco(e) * .45 + (harmonie(e) ? .1 : 0));
   const sourire = e.equipe.some(p => p.trait === 'souriant' && p.role === 'salle' && presentA(p, momentIndex(e))) ? .15 : 0;
   return { gout, attente, prix, ambiance, sourire };
@@ -381,7 +482,7 @@ export function commander(e, grain, kg, auto = false) {
 export function commanderUrgence(e, grain, kg) {
   if (!e.debloques.includes(grain)) return 'verrou';
   if (!ouvert(e)) return commander(e, grain, kg);
-  const prix = G[grain].prixSac * URGENCE.mult * kg;
+  const prix = prixKg(e, grain) * URGENCE.mult * kg;
   if (e.argent < prix) return 'argent';
   if (totalStock(e) + kg * DOSES_SAC > capaciteReserve(e) + 1e-6) return 'place';
   depenser(e, prix); e.stats.commandes++;
@@ -422,7 +523,7 @@ export function acheter(e, id) {
   if (ouvert(e)) return 'ferme';
   const p = prixTravaux(e, t);
   if (e.argent < p) return 'argent';
-  depenser(e, p, 'investissements'); e.achats.push(id); return 'ok';
+  depenser(e, p, 'investissements'); e.achats.push(id); nouveauxProduits(e); return 'ok';
 }
 export function acheterMachine(e, poste, id) {
   const m = M[id];
@@ -432,7 +533,7 @@ export function acheterMachine(e, poste, id) {
   if (e.machines[poste] === id) return 'deja';
   const reprise = e.machines[poste] ? M[e.machines[poste]].prix * .25 : 0;
   if (e.argent + reprise < m.prix) return 'argent';
-  depenser(e, m.prix - reprise, 'investissements'); e.machines[poste] = id; e.calcaire[poste] = 0; return 'ok';
+  depenser(e, m.prix - reprise, 'investissements'); e.machines[poste] = id; e.calcaire[poste] = 0; nouveauxProduits(e); return 'ok';
 }
 export function acheterMoulin(e, id) {
   const m = MO[id];
@@ -476,6 +577,10 @@ export function emprunter(e, id) {
   e.pret = { id, montant: p.montant, taux: p.taux, mois: p.mois, restant: p.mois, capital: p.montant, mensualite: mensualite(p.montant, p.taux, p.mois) };
   return 'ok';
 }
+// Résultat d'un mois avant impôt : les investissements n'y comptent pas (ils durent), les primes oui
+export const resultatMois = m => m.ca + (m.primes || 0) - m.achats - m.salaires - m.loyer - m.energie - m.entretien - m.interets - (m.marketing || 0);
+// Une prime (défi, objectif de mamie) entre dans la caisse et dans les comptes du mois
+export function encaisserPrime(e, x) { if (!(x > 0)) return; e.argent += x; e.mois.primes = (e.mois.primes || 0) + x; }
 function finDuMois(e, arrivees) {
   const m = e.mois, loyer = loyerMois(e), entretien = entretienMois(e);
   e.argent -= loyer + MOIS.assurance + entretien; m.loyer += loyer + MOIS.assurance; m.entretien += entretien;
@@ -484,7 +589,7 @@ function finDuMois(e, arrivees) {
     e.argent -= e.pret.mensualite; m.interets += interets; m.remboursement = capital; e.pret.capital = Math.max(0, e.pret.capital - capital); e.pret.restant--;
     if (e.pret.restant <= 0) { e.pret = null; e.stats.pretsRembourses++; arrivees.push({ pretRembourse: true }); }
   }
-  const avantImpot = m.ca - m.achats - m.salaires - m.loyer - m.energie - m.entretien - m.interets;
+  const avantImpot = resultatMois(m);
   m.impots = avantImpot > 0 ? Math.round(avantImpot * MOIS.impot) : 0; e.argent -= m.impots;
   m.resultat = avantImpot - m.impots; m.numero = e.historiqueMois.length + 1; m.nom = NOMS_MOIS[(Math.floor((e.jour - 1) / MOIS.jours)) % 12];
   e.historiqueMois = [...e.historiqueMois.slice(-11), m];
@@ -540,7 +645,8 @@ export function appliquerEvenement(e, type) {
 const meilleurGrain = e => [...GRAINS].reverse().find(g => e.debloques.includes(g.id));
 const PRIX_MUSICIEN = 120, PRIX_NETTOYAGE = 180, PRIX_EXTRA = 90;
 const meilleurEmploye = e => e.equipe.filter(p => !p.gerant).sort((x, y) => y.comp - x.comp)[0];
-const employeDuJour = e => e.equipe.find(x => !x.gerant && heuresPlanifiees(x) > 0);
+// Quelqu'un qui devait travailler cet après-midi (ou ce soir)
+const employeDuJour = e => e.equipe.find(x => !x.gerant && !x.formation && x.absent == null && (x.planning[2] || x.planning[3]));
 const CARTES = {
   groupe: {
     ok: () => true,
@@ -572,7 +678,7 @@ const CARTES = {
     ok: e => e.horloge < 17,
     carte: () => ({ texte: `Un musicien propose de jouer cet après-midi pour ${PRIX_MUSICIEN} €. L’ambiance attire du monde.`, options: ['Payer', 'Non merci'] }),
     choix: (e, k) => {
-      if (k !== 0) return 'Le musicien ira jouer chez CaféMax…';
+      if (k !== 0) return cafemaxOuvert(e) ? 'Le musicien ira jouer chez CaféMax…' : 'Le musicien ira jouer plus loin dans la rue.';
       if (e.argent < PRIX_MUSICIEN) return 'Pas assez d’argent pour le musicien.';
       depenser(e, PRIX_MUSICIEN); e.evts.push({ id: 'musique', nom: 'Musicien', demande: 1.35, reste: 90 }); return 'Musique ! +35 % de clients pendant 3 heures.';
     },
@@ -586,7 +692,7 @@ const CARTES = {
     },
   },
   debauche: {
-    ok: e => !!meilleurEmploye(e) && meilleurEmploye(e).comp >= 3,
+    ok: e => cafemaxOuvert(e) && !!meilleurEmploye(e) && meilleurEmploye(e).comp >= 3,
     carte: e => ({ texte: `CaféMax veut débaucher ${meilleurEmploye(e).nom} ! L’augmenter de 2 €/h pour la ou le garder ?`, options: ['Augmenter', 'Laisser partir'] }),
     choix: (e, k) => {
       const p = meilleurEmploye(e); if (!p) return 'Fausse alerte.';
@@ -606,12 +712,12 @@ const CARTES = {
     },
   },
   malade: {
-    ok: e => !!employeDuJour(e),
-    carte: e => ({ texte: `${employeDuJour(e).nom} appelle : malade, pas de travail cet après-midi. Appeler un extra d’agence (${PRIX_EXTRA} €) ?`, options: ['Appeler l’agence', 'On fera sans'] }),
+    ok: e => e.horloge < 14 && !!employeDuJour(e),
+    carte: e => ({ texte: `${employeDuJour(e).nom} appelle : malade, pas de travail cet après-midi. Appeler un extra d’agence (${PRIX_EXTRA} €) pour la ou le remplacer ?`, options: ['Appeler l’agence', 'On fera sans'] }),
     choix: (e, k) => {
       const p = employeDuJour(e); if (!p) return 'Fausse alerte.';
-      if (k === 0 && e.argent >= PRIX_EXTRA) { depenser(e, PRIX_EXTRA, 'salaires'); return 'Un extra arrive en renfort pour l’après-midi.'; }
-      p.planning = p.planning.map((v, i) => i >= 2 ? 0 : v); return `${p.nom} est absent·e cet après-midi : l’équipe fera sans.`;
+      if (k === 0 && e.argent >= PRIX_EXTRA) { depenser(e, PRIX_EXTRA, 'salaires'); return `Un extra remplace ${p.nom} cet après-midi.`; }
+      p.absent = 2; return `${p.nom} est absent·e cet après-midi : l’équipe fera sans. Retour demain.`;
     },
   },
 };
@@ -632,7 +738,7 @@ export const decisionsConnues = () => Object.keys(CARTES);
 
 // ---------- Avis clients : trois avis chaque soir, tirés de la journée ----------
 export function genererAvis(e, b, rnd = Math.random) {
-  const r = prixEffectif({ ...e, phase: 'service', horloge: 9 }) / prixJuste(e), g = 1 - Math.exp(-qualite(e) / 2.5);
+  const r = ratioPrixCarte(e), g = 1 - Math.exp(-qualite(e) / 2.5);
   const rupture = (b.moments || []).reduce((s, m) => s + (m.stock || 0), 0), boisson = BO[e.boisson], effetB = effetBoisson(e.boisson, e.meteo);
   const perdus = b.perdus || 0, servis = b.tasses || 0;
   const sujets = [];
@@ -648,6 +754,10 @@ export function genererAvis(e, b, rnd = Math.random) {
   if (e.dosage >= 10) sujets.push([.5, 5, 'Un café bien corsé, comme je l’aime.']); else if (e.dosage <= 7) sujets.push([.6, 2, 'Le café manque de corps, on dirait de l’eau.']);
   if ((b.invendus || 0) === 0 && (b.viennoiseries || 0) > 0 && a(e, 'vitrine') && e.viennoiseries.commande > 0) sujets.push([.4, 3, 'Plus un seul croissant à 10 h…']);
   if (e.meteo === 'froid' && a(e, 'cheminee')) sujets.push([.7, 5, 'Se réchauffer près de la cheminée, le bonheur.']);
+  const nb = nbProduits(e);
+  if (nb >= 8) sujets.push([.5, 5, 'Une vraie carte : il y en a pour tous les goûts.']); else if (nb <= 2) sujets.push([.5, 3, 'Juste un café ? Un jus ou un thé, ce serait bien.']);
+  const cherProduit = CARTE.find(p => p.id !== 'espresso' && produitActif(e, p.id) && prixProduit(e, p.id) / prixJusteProduit(e, p.id) > 1.25);
+  if (cherProduit) sujets.push([.85, 2, `${cherProduit.nom} à ${prixProduit(e, cherProduit.id).toFixed(2).replace('.', ',')} € ? Faut pas exagérer.`]);
   sujets.sort((x, y) => y[0] - x[0]);
   return sujets.slice(0, 3).map(([, etoiles, texte], k) => ({ nom: PRENOMS_AVIS[Math.floor(rnd() * PRENOMS_AVIS.length) % PRENOMS_AVIS.length], etoiles: Math.max(1, Math.min(5, etoiles + (k === 2 && rnd() < .3 ? -1 : 0))), texte }));
 }
@@ -677,11 +787,15 @@ function fermer(e, rnd = Math.random) {
   const b = { jour: e.jour, date: dateTexte(e), recettes: e.journee.recettes, depenses: e.journee.depenses, charges: c.total, tasses: e.journee.tasses,
     clients: e.journee.clients, perdus: e.journee.perdus, viennoiseries: e.journee.viennoiseries, invendus: e.journee.invendus,
     satisfaction: e.journee.clients > 0 ? e.journee.satisfaction / e.journee.clients : null,
-    benefice: e.journee.recettes - e.journee.depenses - c.total, detail: c, moments: e.journee.moments, heures: e.journee.heures };
+    benefice: e.journee.recettes - e.journee.depenses - c.total, detail: c, moments: e.journee.moments, heures: e.journee.heures,
+    produits: e.journee.produits, remises: e.journee.remises };
   if (e.defi && !e.defi.fini && !e.defi.rate) {
     const d = e.defi, ok = d.id === 'benefice' ? b.benefice >= d.cible : d.id === 'sansRupture';
-    if (ok) { d.fini = true; e.argent += d.prime; } else d.rate = true;
+    if (ok) { d.fini = true; encaisserPrime(e, d.prime); } else d.rate = true;
   }
+  b.nouveauxFideles = evolutionFidelite(e, b.clients, b.satisfaction);
+  e.campagnes = (e.campagnes || []).map(x => ({ ...x, jours: x.jours - 1 })).filter(x => x.jours > 0);
+  e.equipe.forEach(p => { delete p.absent; });
   if (e.defi) b.defi = { texte: e.defi.texte, reussi: e.defi.fini, prime: e.defi.prime };
   b.avis = genererAvis(e, b, rnd);
   for (const p of [...e.equipe]) {
@@ -698,7 +812,7 @@ function fermer(e, rnd = Math.random) {
   GRAINS.forEach(g => { if (e.stock[g.id] > 0) e.age[g.id] = (e.age[g.id] || 0) + (a(e, 'entrepot') ? .5 : 1); else e.age[g.id] = 0; });
   e.meteoDemain = tirerMeteo(rnd, e);
   e.machines.forEach((id, p) => { if (id) e.calcaire[p] = Math.min(1, (e.calcaire[p] || 0) + CALCAIRE.parJour / Math.sqrt(M[id].fiabilite)); });
-  e.bilans = [...e.bilans.slice(-13), b];
+  e.bilans = [...e.bilans.slice(-27), b];   // quatre semaines, pour les courbes
   e.phase = 'nuit'; e.horloge = HORAIRES.fermeture; e.nuitReste = 0;
   e.evts = e.evts.filter(v => v.id === 'etudiants'); e.decision = null; e.decisionsDuJour = [];
   e.st.forEach(s => { s.panne = null; s.coup = 0; });
@@ -713,6 +827,8 @@ function fermer(e, rnd = Math.random) {
     if (!e.sauvetage) { e.sauvetage = true; e.argent += 10000; arrivees.push({ sauvetage: true }); }
     else { e.faillite = true; arrivees.push({ faillite: true }); }
   } else if (e.argent < DECOUVERT.alerte) arrivees.push({ alerteBanque: true });
+  // Pour les courbes du journal : l'état du café ce soir-là
+  Object.assign(b, { caisse: e.argent, note: e.rep, notoriete: e.notoriete, membres: e.fidelite?.active ? e.fidelite.membres : 0 });
   return { bilan: b, arrivees };
 }
 export function ouvrir(e, rnd = Math.random) {
@@ -754,27 +870,36 @@ export function tick(e, dt, rnd = Math.random) {
   });
   if (e.stock[e.maison] <= 0) { const autre = [...GRAINS].reverse().find(g => e.stock[g.id] > 0); if (autre) { e.maison = autre.id; arrivees.push({ repli: autre.id }); } }
 
-  const b = bilan(e), k = consoParTasse(e);
+  const b = bilan(e), parts = partsCarte(e), k = consoParTasse(e) * Math.max(.05, partGrain(e, parts));
   const ventes = Math.min(b.ventes * dt, e.stock[e.maison] / k);
   const perdus = Math.max(0, b.demande * dt - ventes);
   e.stock[e.maison] = Math.max(0, e.stock[e.maison] - ventes * k);
-  if (menuLait(e)) {
-    e.lait = Math.max(0, e.lait - ventes * LAIT.part);
-    if (e.lait <= 0 && !e.laitVide) { e.laitVide = true; arrivees.push({ plusDeLait: true }); }
+  // Chaque produit de la carte : combien en vendre, dans la limite du lait, des croissants et de la cuisine
+  const mult = tarifMoment(e) * multTicket(e), capCuisine = (b.cap?.cuisine || 0) * dt / SPH;
+  const demCuisine = ventes * Object.keys(parts).reduce((s, id) => s + (CA[id].cuisine ? parts[id] : 0), 0);
+  const fCuisine = demCuisine > capCuisine ? capCuisine / demCuisine : 1;
+  let recette = 0, ingredients = 0, vienno = 0;
+  for (const id in parts) {
+    const p = CA[id]; let n = ventes * parts[id];
+    if (p.cuisine) n *= fCuisine;
+    if (p.lait) { n = Math.min(n, e.lait); e.lait = Math.max(0, e.lait - n); if (e.lait <= 0 && !e.laitVide) { e.laitVide = true; arrivees.push({ plusDeLait: true }); } }
+    if (p.stock) { n = Math.min(n, e.viennoiseries.stock); e.viennoiseries.stock -= n; vienno += n; }
+    if (n <= 0) continue;
+    const ca = n * prixProduit(e, id) * mult;
+    recette += ca; if (!p.stock) ingredients += n * p.cout;
+    const t = e.journee.produits[id] || (e.journee.produits[id] = { n: 0, ca: 0 }); t.n += n; t.ca += ca;
   }
-  let vienno = 0;
-  if (e.viennoiseries.stock > 0) { vienno = Math.min(e.viennoiseries.stock, ventes * VIENNOISERIES.part[momentIndex(e)]); e.viennoiseries.stock -= vienno; }
-  const recette = ventes * panier(e) + vienno * VIENNOISERIES.prix;
+  e.journee.remises += ventes * partFideles(e) * FIDELITE.remise * prixEffectif(e);
   e.argent += recette; e.meta.totalGagne += recette; e.meta.tasses += ventes; e.meta.clientsTotal += ventes;
   e.journee.recettes += recette; e.journee.tasses += ventes; e.journee.clients += ventes; e.journee.perdus += perdus; e.journee.viennoiseries += vienno;
-  e.mois.ca += recette; if (ventes > 0) depenser(e, ventes * CONSOMMABLES);
+  e.mois.ca += recette; if (ventes > 0) depenser(e, ventes * CONSOMMABLES + ingredients);
   const sat = satisfaction(e, b);
   e.journee.satisfaction += sat * ventes;
   e.rep += (sat - e.rep) * Math.min(1, ventes * NOTE.poids);
   e.rep += (NOTE.perdu - e.rep) * Math.min(1, perdus * NOTE.poidsPerdu);
   e.rep = Math.max(1, Math.min(5, e.rep));
   e.nbAvis += ventes * .08;
-  e.notoriete = Math.min(NOTORIETE.max, e.notoriete + ventes * NOTORIETE.parClient * Math.max(.2, (e.rep - 2) / 1.5));
+  e.notoriete = Math.min(NOTORIETE.max, e.notoriete + ventes * NOTORIETE.parClient * Math.max(.2, (e.rep - 2) / 1.5) * multBouche(e));
   if (b.demande > 0) e.service += (Math.min(1, b.chaine * 1.3 / b.demande) - e.service) * Math.min(1, dt * .02);
   const hr = e.journee.heures?.[Math.max(0, Math.min(e.journee.heures.length - 1, Math.floor(e.horloge - HORAIRES.ouverture)))];
   if (hr) { hr.ventes += ventes; hr.recettes += recette; if (b.goulot.type === 'station') hr.station += dt; else if (b.goulot.type === 'clients') hr.clients += dt; else if (b.goulot.type === 'stock') hr.stock += dt; }
@@ -790,7 +915,7 @@ export function tick(e, dt, rnd = Math.random) {
     if (d.id === 'tasses') d.progres = e.journee.tasses;
     if (d.id === 'matin') { d.progres = e.journee.moments[0].ventes; if (e.horloge >= MOMENTS[0].a && d.progres < d.cible) d.rate = true; }
     if (d.id === 'sansRupture' && e.ruptureDepuis > 0) d.rate = true;
-    if ((d.id === 'tasses' || d.id === 'matin') && d.progres >= d.cible) { d.fini = true; e.argent += d.prime; arrivees.push({ defiReussi: d }); }
+    if ((d.id === 'tasses' || d.id === 'matin') && d.progres >= d.cible) { d.fini = true; encaisserPrime(e, d.prime); arrivees.push({ defiReussi: d }); }
     if (d.rate) arrivees.push({ defiRate: d });
   }
   for (const g of GRAINS) if (e.rep >= g.rep && !e.debloques.includes(g.id)) { e.debloques.push(g.id); arrivees.push({ debloque: g.id }); }
@@ -846,6 +971,7 @@ export function servirHabitue(e, id) {
 const TESTS_OBJECTIFS = {
   journal: e => e.stats.nuits >= 1, commande: e => e.stats.commandes >= 1 || !!e.abonnement.grain,
   embauche: e => e.equipe.some(p => !p.gerant && p.role === 'salle'), peinture: e => a(e, 'peinture'),
+  carte: e => nbProduits(e) > VARIETE.reference, fidelite: e => !!e.fidelite?.active,
   machine: e => machinesInstallees(e).some(m => m.id !== 'occasion'), premierMois: e => e.historiqueMois.some(m => m.resultat > 0),
   note35: e => e.rep >= 3.5 && e.nbAvis >= 100, equipe3: e => e.equipe.filter(p => !p.gerant).length >= 3,
   cloison: e => a(e, 'agrandir'), ca15k: e => e.historiqueMois.some(m => m.ca >= 15000), terrasse: e => a(e, 'terrasse'),
@@ -856,6 +982,6 @@ export const primeObjectif = (e, o) => o.prime;
 export function verifierObjectif(e) {
   const o = objectifActuel(e);
   if (!o || !TESTS_OBJECTIFS[o.id]?.(e)) return null;
-  e.argent += o.prime; e.objectif++;
+  encaisserPrime(e, o.prime); e.objectif++;
   return { ...o, prime: o.prime };
 }

@@ -4,10 +4,11 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { nomCafe, prixEffectif, neige, murActuel, solActuel, formuleDuMoment, a, tierMachine, nbMachines, tierMoulin, debitStation, debitMax, panier, pleut, choisirHabitue, cafemaxOuvert, prixCappuccino, ouvert, avanceeJournee, CATALOGUE_MACHINES } from './game.js';
+import { nomCafe, prixEffectif, neige, murActuel, solActuel, formuleDuMoment, a, tierMachine, nbMachines, tierMoulin, debitStation, debitMax, panier, pleut, choisirHabitue, cafemaxOuvert, prixProduit, produitActif, CATALOGUE_CARTE, ouvert, avanceeJournee, CATALOGUE_MACHINES } from './game.js';
 import { G, VILLES, INFOS_VILLES } from './data.js';
 
 // Modèles 3D générés par Blender (tools/blender/modeles.py). Si un fichier manque, on garde les formes simples.
@@ -25,16 +26,16 @@ async function chargerModeles(surProgression) {
 
 // Couleurs de l'éclairage selon le moment de la journée (matin, midi, après-midi, soirée)
 const AMBIANCES = [
-  { fond: 0xF2DCC4, soleil: 0xFFD9A8, iSoleil: 1.9, iCiel: 1.15, fenetre: 0xFFE2B8, lampes: .6 },
-  { fond: 0xEFDDC8, soleil: 0xFFF0DA, iSoleil: 2.3, iCiel: 1.3, fenetre: 0xCFE9E2, lampes: .4 },
-  { fond: 0xEDD3B8, soleil: 0xFFC890, iSoleil: 2.0, iCiel: 1.1, fenetre: 0xFFD7A0, lampes: .7 },
-  { fond: 0xC9C2D6, soleil: 0x9FA8D8, iSoleil: .9, iCiel: .75, fenetre: 0x4E5A8A, lampes: 1.6 },
+  { fond: 0xF2DCC4, soleil: 0xFFD9A8, iSoleil: 2.2, iCiel: .8, fenetre: 0xFFE2B8, lampes: .6 },
+  { fond: 0xEFDDC8, soleil: 0xFFF0DA, iSoleil: 2.6, iCiel: .9, fenetre: 0xCFE9E2, lampes: .4 },
+  { fond: 0xEDD3B8, soleil: 0xFFC890, iSoleil: 2.3, iCiel: .78, fenetre: 0xFFD7A0, lampes: .7 },
+  { fond: 0xC9C2D6, soleil: 0x9FA8D8, iSoleil: .8, iCiel: .55, fenetre: 0x4E5A8A, lampes: 1.6 },
 ];
 
 const C = { lait: 0xFFFDF8, cafe: 0x4A2E1F, caramel: 0xC8874A, caramelF: 0xA86A33, sauge: 0x8FA98B,
             framboise: 0xD9695F, miel: 0xE8B54A, bois: 0x8A5A3A, cuivre: 0xC07A45, peau: 0xF2C9A5 };
 const COULEUR_SAC = { premier: 0xA89880, robusta: C.caramel, arabica: 0xB9A07A, moka: 0x8FA98B, bourbon: 0xE8B54A, geisha: 0x9C6B8E };
-const HABITS = [0x6E86A8, 0xE8B54A, 0xD9695F, 0x8FA98B, 0xB48EC9, 0x5E9CA0, 0xE59A6B];
+const HABITS = [0x55657A, 0x8C7A5E, 0x7A4B44, 0x6B7A63, 0x3F4A5A, 0x9A8F84, 0x2F3533, 0xB7AA98];
 const CHEVEUX = [0x4A2E1F, 0x2B1B12, 0xE9E1DA, 0x8A4B2B, 0xD9A35C, 0x1E1E1E];
 const PEAUX = [0xF2C9A5, 0xE0B08A, 0xC99A78, 0x9C6B4A, 0xF5D3B8];
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
@@ -83,7 +84,7 @@ class Marcheur {
     o.position.x += dx / d * pas; o.position.z += dz / d * pas;
     let diff = Math.atan2(dx, dz) - o.rotation.y;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff)); o.rotation.y += diff * Math.min(1, dt * 12);
-    this.t += dt * facteur; o.position.y = Math.abs(Math.sin(this.t * 11)) * (o.userData.membres ? .03 : .07);
+    this.t += dt * facteur; o.position.y = Math.abs(Math.sin(this.t * 11)) * (o.userData.membres ? .015 : .03);
     this.membres(true);
   }
 }
@@ -108,7 +109,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.0;
   conteneur.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -128,8 +129,17 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   // Post-traitement (graphismes « beaux ») : un halo doux autour de ce qui brille (lampes, lanternes, guirlande)
   const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 4 }));
   composer.addPass(new RenderPass(scene, cam));
-  const halo = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), .6, .55, 1.15);
-  composer.addPass(halo); composer.addPass(new OutputPass());
+  const halo = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), .22, .4, 1.25);
+  // Étalonnage : couleurs un peu moins saturées et coins assombris, comme une photo
+  const etalonnage = new ShaderPass({
+    uniforms: { tDiffuse: { value: null }, force: { value: .32 }, couleur: { value: .88 } },
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform sampler2D tDiffuse; uniform float force; uniform float couleur; varying vec2 vUv;
+      void main() { vec4 c = texture2D(tDiffuse, vUv); vec2 d = vUv - .5;
+        float l = dot(c.rgb, vec3(.299, .587, .114)); c.rgb = mix(vec3(l), c.rgb, couleur);
+        c.rgb *= 1.0 - force * dot(d, d) * 2.4; gl_FragColor = c; }`,
+  });
+  composer.addPass(halo); composer.addPass(etalonnage); composer.addPass(new OutputPass());
   let hauteQualite = true;
   function redim() {
     const w = innerWidth, h = innerHeight, r = w / h;
@@ -146,9 +156,9 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   }
   addEventListener('resize', redim);
 
-  const ciel = new THREE.HemisphereLight(0xFFF4E6, 0xB98A62, 1.25);
+  const ciel = new THREE.HemisphereLight(0xF4EDE4, 0x8C6A50, .8);
   scene.add(ciel);
-  const soleil = new THREE.DirectionalLight(0xFFE7C7, 2.1);
+  const soleil = new THREE.DirectionalLight(0xFFE2BC, 2.5);
   soleil.position.set(7, 14, 9);
   soleil.castShadow = true;
   soleil.shadow.mapSize.set(2048, 2048);
@@ -165,15 +175,38 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   function ombreContact(p) { const o = new THREE.Mesh(geoOmbre, matOmbre); o.rotation.x = -Math.PI / 2; o.position.y = .015; o.renderOrder = -1; p.add(o); return o; }
 
   // ---- Textures dessinées ----
-  const texSol = texture(512, 512, (g, w) => {
-    for (let i = 0; i < 16; i++) {
-      g.fillStyle = i % 2 ? '#D7B089' : '#CFA67C'; g.fillRect(0, i * 32, w, 32);
-      g.fillStyle = 'rgba(74,46,31,.13)'; g.fillRect(0, i * 32, w, 2);
-      g.fillRect((i * 173) % w, i * 32, 3, 32); g.fillRect((i * 173 + 260) % w, i * 32, 3, 32);
+  // Hasard fixe (toujours le même dessin) pour les textures
+  const hasardTex = (graine => () => { graine = (graine * 16807) % 2147483647; return graine / 2147483647; })(97);
+  // Parquet : lames de teintes un peu différentes (entre c1 et c2), veinage, nœuds et joints
+  const mixHex = (a, b, t) => { const x = parseInt(a.slice(1), 16), y = parseInt(b.slice(1), 16), m = s => Math.round(((x >> s) & 255) * (1 - t) + ((y >> s) & 255) * t); return `rgb(${m(16)},${m(8)},${m(0)})`; };
+  function dessinParquet(g, w, c1, c2, H) {
+    for (let i = 0; i < w / H; i++) {
+      let x = -hasardTex() * H * 5;
+      while (x < w) {
+        const long = H * (4 + hasardTex() * 5), t = hasardTex();
+        g.fillStyle = mixHex(c1, c2, t); g.fillRect(x, i * H, long, H);
+        g.fillStyle = `rgba(${t < .5 ? '255,240,220' : '60,35,20'},${.03 + hasardTex() * .05})`; g.fillRect(x, i * H, long, H);
+        for (let v = 0; v < 9; v++) {   // veines du bois
+          g.strokeStyle = `rgba(110,70,40,${.05 + hasardTex() * .08})`; g.lineWidth = 1 + hasardTex() * 1.5; g.beginPath();
+          const y0 = i * H + 4 + hasardTex() * (H - 8); g.moveTo(x, y0);
+          g.bezierCurveTo(x + long * .3, y0 + (hasardTex() - .5) * 10, x + long * .7, y0 + (hasardTex() - .5) * 10, x + long, y0 + (hasardTex() - .5) * 6); g.stroke();
+        }
+        if (hasardTex() < .3) { g.fillStyle = 'rgba(90,55,30,.18)'; g.beginPath(); g.ellipse(x + long * hasardTex(), i * H + H / 2, 6, 3, 0, 0, Math.PI * 2); g.fill(); }   // nœud
+        g.fillStyle = 'rgba(60,35,20,.35)'; g.fillRect(x, i * H, 2, H);   // joint de bout
+        x += long;
+      }
+      g.fillStyle = 'rgba(60,35,20,.3)'; g.fillRect(0, i * H, w, 2);   // joint entre les lames
+      g.fillStyle = 'rgba(255,240,220,.06)'; g.fillRect(0, i * H + 2, w, 3);
     }
-  });
+  }
+  const texSol = texture(512, 512, (g, w) => dessinParquet(g, w, '#D7B089', '#C49A70', 32));
   texSol.wrapS = texSol.wrapT = THREE.RepeatWrapping; texSol.repeat.set(1.5, 1);
-  const texMurNeuf = texture(256, 256, (g, w, h) => { g.fillStyle = '#F7E9D7'; g.fillRect(0, 0, w, h); g.fillStyle = '#F0DCC4'; for (let x = 0; x < w; x += 32) g.fillRect(x, 0, 14, h); });
+  // Mur peint : un enduit légèrement irrégulier (plus de rayures de papier peint)
+  const texMurNeuf = texture(256, 256, (g, w, h) => {
+    g.fillStyle = '#F4E6D4'; g.fillRect(0, 0, w, h);
+    for (let k = 0; k < 900; k++) { const c = hasardTex() < .5 ? '255,250,240' : '150,120,90'; g.fillStyle = `rgba(${c},${.03 + hasardTex() * .05})`; g.fillRect(hasardTex() * w, hasardTex() * h, 2 + hasardTex() * 6, 2 + hasardTex() * 6); }
+    const bas = g.createLinearGradient(0, h * .7, 0, h); bas.addColorStop(0, 'rgba(120,90,60,0)'); bas.addColorStop(1, 'rgba(120,90,60,.1)'); g.fillStyle = bas; g.fillRect(0, h * .7, w, h * .3);
+  });
   const texMurVieux = texture(256, 256, (g, w, h) => {
     g.fillStyle = '#D8C9A8'; g.fillRect(0, 0, w, h);
     for (let k = 0; k < 14; k++) { g.fillStyle = `rgba(120,95,55,${.06 + (k % 4) * .03})`; g.beginPath(); g.ellipse((k * 67) % w, (k * 41) % h, 18 + k % 5 * 6, 10 + k % 3 * 8, 0, 0, Math.PI * 2); g.fill(); }
@@ -400,15 +433,16 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   put(new THREE.Mesh(new THREE.PlaneGeometry(1.04, .72), new THREE.MeshBasicMaterial({ map: texArdoise, transparent: true })), 0, .39, .035, D.ardoise);
   let cleArdoise = '';
   function majArdoise(e) {
-    const cle = [prixEffectif(e), e.maison, a(e, 'vitrine'), a(e, 'buse')].join('|'); if (cle === cleArdoise) return; cleArdoise = cle;
+    // Trois produits de la carte (l'espresso d'abord, puis les plus vendus hier), et le grain servi
+    const hier = e.bilans?.at(-1)?.produits || {};
+    const autres = Object.keys(e.carte || {}).filter(id => produitActif(e, id)).sort((x, y) => (hier[y]?.n || 0) - (hier[x]?.n || 0)).slice(0, 2);
+    const cle = [prixEffectif(e), e.maison, ...autres.map(id => id + prixProduit(e, id))].join('|'); if (cle === cleArdoise) return; cleArdoise = cle;
     const g = toileArdoise.getContext('2d'), W = toileArdoise.width;
     g.clearRect(0, 0, W, 360);
     g.fillStyle = 'rgba(255,253,248,.92)'; g.textAlign = 'center';
     g.font = '600 46px Fredoka, sans-serif'; g.fillText('~ Aujourd\'hui ~', W / 2, 62);
     g.font = '500 34px Fredoka, sans-serif'; g.textAlign = 'left';
-    const lignes = [['Espresso', fmt(prixEffectif(e))], ['Grain : ' + G[e.maison].court, '']];
-    if (a(e, 'buse')) lignes.splice(1, 0, ['Cappuccino', fmt(prixCappuccino(e))]);
-    if (a(e, 'vitrine')) lignes.splice(lignes.length - 1, 0, ['+ croissant', fmt(prixEffectif(e) * .2)]);
+    const lignes = [['Espresso', fmt(prixEffectif(e))], ...autres.map(id => [CATALOGUE_CARTE[id].nom.replace('Jus d’orange pressé', 'Jus d’orange'), fmt(prixProduit(e, id))]), ['Grain : ' + G[e.maison].court, '']];
     lignes.forEach(([t, p], k) => { g.fillText(t, 40, 140 + k * 62); g.textAlign = 'right'; g.fillText(p, W - 40, 140 + k * 62); g.textAlign = 'left'; });
     g.strokeStyle = 'rgba(255,253,248,.5)'; g.lineWidth = 3; g.beginPath(); g.moveTo(70, 86); g.lineTo(W - 70, 86); g.stroke();
     texArdoise.needsUpdate = true;
@@ -564,15 +598,16 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   // Pluie : des traits qui tombent sur toute la scène pendant une averse
   const NB_GOUTTES = 420, gouttes = new Float32Array(NB_GOUTTES * 6);
   // Les gouttes tombent dehors seulement (autour du café et sur la terrasse), jamais dans la salle
-  const dehors = () => { let x, z; do { x = Math.random() * 20 - 9; z = Math.random() * 17 - 7; } while (x > -6.4 && x < 6.4 && z > -4.4 && z < 4.4); return [x, z]; };
-  const graines = Array.from({ length: NB_GOUTTES }, () => { const [x, z] = dehors(); return [x, Math.random() * 7, z]; });
+  const dehors = () => { let x, z; do { x = Math.random() * 20 - 9; z = Math.random() * 17 - 7; } while (x > -6.6 && x < 8.2 && z > -4.6 && z < 6.2); return [x, z]; };
+  const HAUT_PLUIE = 2.6;   // une goutte trop haute se projette sur la salle en vue de dessus
+  const graines = Array.from({ length: NB_GOUTTES }, () => { const [x, z] = dehors(); return [x, Math.random() * HAUT_PLUIE, z]; });
   const geoPluie = new THREE.BufferGeometry(); geoPluie.setAttribute('position', new THREE.BufferAttribute(gouttes, 3));
-  const pluie = new THREE.LineSegments(geoPluie, new THREE.LineBasicMaterial({ color: 0xE6F0FA, transparent: true, opacity: .85 }));
+  const pluie = new THREE.LineSegments(geoPluie, new THREE.LineBasicMaterial({ color: 0xC9D6E2, transparent: true, opacity: .45 }));
   pluie.frustumCulled = false; pluie.visible = false; scene.add(pluie);
   function majPluie(dt) {
     graines.forEach((g, k) => {
-      g[1] -= dt * 9; if (g[1] < 0) { g[1] += 7; [g[0], g[2]] = dehors(); }
-      gouttes.set([g[0], g[1], g[2], g[0] + .07, g[1] + .55, g[2] + .07], k * 6);
+      g[1] -= dt * 9; if (g[1] < 0) { g[1] += HAUT_PLUIE; [g[0], g[2]] = dehors(); }
+      gouttes.set([g[0], g[1], g[2], g[0] + .04, g[1] + .35, g[2] + .04], k * 6);
     });
     geoPluie.attributes.position.needsUpdate = true;
   }
@@ -812,14 +847,13 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     const centre = new THREE.Box3().setFromObject(o).getCenter(V3(0, 0, 0));
     if (!isFinite(centre.x)) return;
     chutes.push({ o, t: 0, y0: o.position.y });
-    o.position.y += 1.8;
-    lancerConfettis(centre.add(V3(0, .6, 0)));
+    o.position.y += .12;   // il se pose, simplement (plus de chute ni de confettis)
   }
   const rebond = u => { const n = 7.5625, d = 2.75; if (u < 1 / d) return n * u * u; if (u < 2 / d) return n * (u -= 1.5 / d) * u + .75; if (u < 2.5 / d) return n * (u -= 2.25 / d) * u + .9375; return n * (u -= 2.625 / d) * u + .984375; };
   function majChutes(dt) {
     for (let k = chutes.length - 1; k >= 0; k--) {
-      const c = chutes[k]; c.t += dt; const u = Math.min(1, c.t / .75);
-      c.o.position.y = c.y0 + 1.8 * (1 - rebond(u));
+      const c = chutes[k]; c.t += dt; const u = Math.min(1, c.t / .6);
+      c.o.position.y = c.y0 + .12 * (1 - u) * (1 - u);
       if (u >= 1) chutes.splice(k, 1);
     }
   }
@@ -942,7 +976,11 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
         }
         g.fillStyle = '#E8B54A'; for (let k = 0; k < 6; k++) { g.beginPath(); g.arc((k * 89) % w, (k * 61 + 40) % h, 5, 0, Math.PI * 2); g.fill(); }
       } else {
-        g.fillStyle = m.c1; g.fillRect(0, 0, w, h); g.fillStyle = m.c2; for (let x = 0; x < w; x += 32) g.fillRect(x, 0, 14, h);
+        // Peinture unie sur un enduit un peu irrégulier
+        g.fillStyle = m.c1; g.fillRect(0, 0, w, h);
+        for (let k = 0; k < 900; k++) { g.fillStyle = hasardTex() < .5 ? nuance(m.c1, 10) : m.c2; g.globalAlpha = .15 + hasardTex() * .25; g.fillRect(hasardTex() * w, hasardTex() * h, 2 + hasardTex() * 6, 2 + hasardTex() * 6); }
+        g.globalAlpha = 1;
+        const bas = g.createLinearGradient(0, h * .7, 0, h); bas.addColorStop(0, 'rgba(90,60,40,0)'); bas.addColorStop(1, 'rgba(90,60,40,.12)'); g.fillStyle = bas; g.fillRect(0, h * .7, w, h * .3);
       }
     });
     tx.wrapS = THREE.RepeatWrapping; tx.repeat.set(5, 1);
@@ -954,10 +992,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     const tx = texture(512, 512, (g, w, h) => {
       if (s.motif === 'lames') {
         rep = [1.5, 1];
-        for (let i = 0; i < 16; i++) {
-          g.fillStyle = i % 2 ? s.c1 : s.c2; g.fillRect(0, i * 32, w, 32);
-          g.fillStyle = 'rgba(40,25,15,.14)'; g.fillRect(0, i * 32, w, 2); g.fillRect((i * 173) % w, i * 32, 3, 32); g.fillRect((i * 173 + 260) % w, i * 32, 3, 32);
-        }
+        dessinParquet(g, w, s.c1, s.c2, 32);
       } else if (s.motif === 'damier') {
         for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { g.fillStyle = (x + y) % 2 ? s.c2 : s.c1; g.fillRect(x * 64, y * 64, 64, 64); }
         g.strokeStyle = 'rgba(0,0,0,.08)'; for (let k = 0; k <= 8; k++) { g.beginPath(); g.moveTo(k * 64, 0); g.lineTo(k * 64, h); g.moveTo(0, k * 64); g.lineTo(w, k * 64); g.stroke(); }
@@ -1313,7 +1348,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
       c.aller({ x: 1.0, z: 2.6 }, { x: pick(pointsAttente()), z: -.55, face: Math.PI, attente: 1.0, fn: m => {
         if (sert) {
           const ta = modele('tasse'); if (ta) put(ta, .24, .5, .1, m.o); else put(cyl(.07, .055, .14, C.lait, 10), .2, .62, .17, m.o);
-          if (gainEnAttente > 0) { surPop(tete(m), '+' + fmt(gainEnAttente)); gainEnAttente = 0; lancerPieces(tete(m)); }
+          gainEnAttente = 0;   // pas d’argent qui vole : la caisse se lit en haut de l’écran
           if (m.habitue) surHabitue(m.habitue, tete(m).add(new THREE.Vector3(0, .5, 0)));
         } else surPop(tete(m), 'Plus de café ?!', true);
       } });
@@ -1378,7 +1413,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     const en = entree();
     const l = new Marcheur(put(perso(0x5E9CA0, pick(CHEVEUX), { peau: pick(PEAUX) }), en.x, 0, en.z), 2.6);
     const s = sac(COULEUR_SAC[grain]); s.scale.setScalar(.75); put(s, 0, .55, .25, l.o);
-    l.aller({ x: 1.0, z: .3 }, { x: -3.4, z: -.9 }, { x: -4.2, z: -2.0, attente: .4, fn: () => { s.visible = false; surPop(ANCRES[0], `+${sacs} sac${sacs > 1 ? 's' : ''}`); } },
+    l.aller({ x: 1.0, z: .3 }, { x: -3.4, z: -.9 }, { x: -4.2, z: -2.0, attente: .4, fn: () => { s.visible = false; } },
             { x: 1.0, z: .3 }, { x: en.x, z: en.z, fn: m => { m.fini = true; } });
     livreurs.push(l);
   }

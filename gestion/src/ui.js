@@ -2,7 +2,7 @@
 import * as J from './game.js';
 import { sons, regleSon, regleMusique } from './sons.js';
 import { STATIONS, GRAINS, G, TRAVAUX, T, SUCCES, HISTOIRE, MOTS_TRAVAUX, DOSES_SAC, LAIT, MOMENTS, TARIFS, MURS, SOLS, STYLES, FORMULES,
-  PERSONNEL, ROLES, PRETS, MOIS, DECOUVERT, VIENNOISERIES } from './data.js';
+  PERSONNEL, ROLES, PRETS, MOIS, DECOUVERT, VIENNOISERIES, CARTE, MARKETING, FIDELITE } from './data.js';
 const heureTexte = h => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.floor((h % 1) * 60)).padStart(2, '0')}`;
 
 export function fmt(n) {
@@ -27,7 +27,7 @@ export function creerUI({ jeu, scene }) {
 
   // ---------- Bulle de mamie et notifications ----------
   function bulle(texte, { titre = 'Mamie Odette', boutons = [{ label: "D'accord !" }] } = {}) {
-    $('bulle-titre').textContent = titre; $('bulle-txt').textContent = texte;
+    $('bulle-titre').textContent = titre; $('bulle-txt').textContent = texte; $('bulle').classList.remove('haut', 'bas');
     const zone = $('bulle-boutons'); zone.innerHTML = ''; zone.className = 'boutons' + (boutons.length === 1 ? ' un' : '');
     boutons.forEach(b => {
       const el = document.createElement('button'); el.className = 'btn ' + (b.cls || ''); el.textContent = b.label;
@@ -116,14 +116,14 @@ export function creerUI({ jeu, scene }) {
   const barres = q => { let h = '<span class="q">'; for (let k = 1; k <= 5; k++) h += `<i class="${q >= k - .25 ? '' : 'v'}"></i>`; return h + '</span>'; };
   // Une commande urgente couvre environ 2 h de ventes, dans la limite de la place et de la caisse
   function urgence(grain) {
-    const e = E(), parHeure = (J.bilan(e).parHeure?.ventes || 20) * J.consoParTasse(e);
-    const place = Math.floor((J.capaciteReserve(e) - J.totalStock(e)) / DOSES_SAC + 1e-6), payable = Math.floor(e.argent / (G[grain].prixSac * 2));
+    const e = E(), parHeure = (J.bilan(e).parHeure?.ventes || 20) * J.consoParTasse(e) * J.partGrain(e);
+    const place = Math.floor((J.capaciteReserve(e) - J.totalStock(e)) / DOSES_SAC + 1e-6), payable = Math.floor(e.argent / (J.prixKg(e, grain) * 2));
     return Math.max(1, Math.min(Math.ceil(parHeure * 2 / DOSES_SAC), place, payable));
   }
   function majStock() {
     const e = E(), cap = J.capaciteReserve(e), tot = J.totalStock(e), b = J.bilan(e), soir = !J.ouvert(e);
     $('s-jauge').style.width = Math.min(100, tot / cap * 100) + '%';
-    const parH = (b.parHeure?.ventes || 0) * J.consoParTasse(e), reste = parH > 0 ? e.stock[e.maison] / parH : Infinity;
+    const parH = (b.parHeure?.ventes || 0) * J.consoParTasse(e) * J.partGrain(e), reste = parH > 0 ? e.stock[e.maison] / parH : Infinity;
     $('s-desc').textContent = `Réserve : ${kg(tot)} / ${cap / DOSES_SAC} kg · ${isFinite(reste) ? `${G[e.maison].nom} épuisé dans ${reste >= 12 ? 'plus d’une journée' : virg(reste) + ' h'}` : soir ? 'commandes du soir livrées demain à 7 h' : 'stock stable'}`;
     let h = GRAINS.map(g => {
       if (!e.debloques.includes(g.id)) return `<div class="ligne verrou"><div class="infos"><h4>${g.nom}</h4><p>Qualité ${barres(g.q)} · ${fmt(g.prixSac)}/kg · se débloque à ${virg(g.rep)} ★</p></div></div>`;
@@ -132,7 +132,7 @@ export function creerUI({ jeu, scene }) {
         <p>Qualité ${barres(g.q)} · ${fmt(pk)}/kg · ${kg(e.stock[g.id])}${enCours ? ` (+${enCours} kg en route)` : ''}${e.stock[g.id] > 0 ? ` · <span class="${J.fraicheur(e, g.id) < .9 ? 'rassis' : 'frais'}">fraîcheur ${Math.round(J.fraicheur(e, g.id) * 100)} %</span>` : ''}</p></div>
         <div class="actions">
           ${e.maison === g.id ? '' : `<button class="btn mini vert" data-maison="${g.id}">Servir</button>`}
-          ${!soir ? `<button class="btn mini${e.argent < g.prixSac * 2 ? ' off' : ''}" data-cmd="${g.id}">+${urgence(g.id)} kg urgent</button>`
+          ${!soir ? `<button class="btn mini${e.argent < pk * 2 ? ' off' : ''}" data-cmd="${g.id}">+${urgence(g.id)} kg urgent</button>`
             : `<button class="btn mini${e.argent < pk ? ' off' : ''}" data-kg="${g.id}:1">+1</button><button class="btn mini${e.argent < pk * 5 ? ' off' : ''}" data-kg="${g.id}:5">+5</button><button class="btn mini${e.argent < pk ? ' off' : ''}" data-remplir="${g.id}">Plein</button>`}
         </div></div>`;
     }).join('');
@@ -152,7 +152,7 @@ export function creerUI({ jeu, scene }) {
     if (J.a(e, 'vitrine')) {
       const n = e.viennoiseries.commande, hier = e.bilans.at(-1);
       h += `<div class="ligne"><div class="infos"><h4>Croissants pour demain</h4>
-        <p>${n} commandés (${fmt(n * VIENNOISERIES.cout)}, vendus ${fmt(VIENNOISERIES.prix)} pièce)${hier ? ` · hier : ${Math.round(hier.viennoiseries)} vendus, ${Math.round(hier.invendus)} jetés` : ''}</p></div>
+        <p>${n} commandés (${fmt(n * VIENNOISERIES.cout)}, vendus ${fmt(J.prixProduit(e, 'croissant'))} pièce${e.carte.croissant.on ? '' : ' · <b class="rouge">pas à la carte</b>'})${hier ? ` · hier : ${Math.round(hier.viennoiseries)} vendus, ${Math.round(hier.invendus)} jetés` : ''}</p></div>
         <div class="actions"><button class="btn mini${n <= 0 ? ' off' : ''}" data-vienno="${n - 10}">−10</button><button class="btn mini vert" data-vienno="${n + 10}">+10</button></div></div>`;
     }
     $('s-liste').innerHTML = h;
@@ -185,7 +185,7 @@ export function creerUI({ jeu, scene }) {
   });
 
   // ---------- Journal du soir (en onglets) ----------
-  const ONGLETS = [['bilan', 'Bilan'], ['equipe', 'Équipe'], ['planning', 'Planning'], ['finances', 'Finances'], ['catalogue', 'Catalogue'], ['entretien', 'Entretien'], ['travaux', 'Travaux']];
+  const ONGLETS = [['bilan', 'Bilan'], ['carte', 'Carte'], ['equipe', 'Équipe'], ['planning', 'Planning'], ['clients', 'Clients'], ['finances', 'Finances'], ['catalogue', 'Catalogue'], ['entretien', 'Entretien'], ['travaux', 'Travaux']];
   const ICONES_CAT = { 'Déco': '🎨', 'Salle': '🪑', 'Réserve': '📦', 'Bar': '☕', 'Agrandir': '🏗️', 'Équipe': '🎓', 'Confort': '🔥' };
   const ICONES_FOURN = { grossiste: '🏪', artisan: '🔥', importateur: '🚢' };
   let onglet = 'bilan', poste = 0, dernierHtml = '';
@@ -214,6 +214,8 @@ export function creerUI({ jeu, scene }) {
         + `<span class="total">Résultat du jour</span><b class="total" style="color:${b.benefice < 0 ? 'var(--framboise)' : 'var(--sauge-f)'}">${montant(b.benefice)}</b></div>`;
       const partPerdus = b.perdus / Math.max(1, b.clients + b.perdus);
       h += `<p class="legende">Satisfaction moyenne : <b>${b.satisfaction ? virg(b.satisfaction, 2) + ' ★' : '—'}</b> · ${Math.round(b.perdus)} client${b.perdus >= 2 ? 's' : ''} reparti${b.perdus >= 2 ? 's' : ''} sans être servi${b.perdus >= 2 ? 's' : ''}${partPerdus > .1 ? ' : <b class="rouge">il manque du monde ou de la place</b>' : ''}${b.viennoiseries > 0 ? ` · ${Math.round(b.viennoiseries)} croissants vendus, ${Math.round(b.invendus)} jetés` : ''}</p>`;
+      const top = Object.entries(b.produits || {}).sort((x, y) => y[1].ca - x[1].ca).slice(0, 4);
+      if (top.length) h += `<p class="legende">Les meilleures ventes : ${top.map(([id, p]) => `${J.CATALOGUE_CARTE[id].icone} ${J.CATALOGUE_CARTE[id].nom.toLowerCase()} <b>${fmt(p.ca)}</b>`).join(' · ')} <button class="lien-mini" data-onglet="carte">voir la carte</button></p>`;
     }
     if (b?.heures) {
       const max = Math.max(1, ...b.heures.map(x => x.ventes));
@@ -235,7 +237,7 @@ export function creerUI({ jeu, scene }) {
           <small class="${ef > .005 ? 'vert' : ef < -.005 ? 'rouge' : ''}">${verrou ? `${virg(x.rep)} ★` : x.id === 'aucune' ? 'panier normal' : `${pct(ef)} par client`}</small></button>`;
       }).join('') + `</div></div>`;
     // Réserve pour demain
-    const cap = J.capaciteReserve(e) / DOSES_SAC, tot = J.totalStock(e) / DOSES_SAC, hier = b ? (b.tasses + b.perdus * .5) * J.consoParTasse(e) / DOSES_SAC : 2;
+    const cap = J.capaciteReserve(e) / DOSES_SAC, tot = J.totalStock(e) / DOSES_SAC, hier = b ? (b.tasses + b.perdus * .5) * J.consoParTasse(e) * J.partGrain(e) / DOSES_SAC : 2;
     const g = G[e.maison], pk = J.prixKg(e, g.id), place = Math.max(0, Math.floor(cap - tot + 1e-6)), n = Math.min(place, Math.floor(e.argent / pk));
     const tient = tot / Math.max(.1, hier), pourDemain = Math.max(0, Math.min(n, Math.ceil(hier * 1.3 - tot)));
     h += `<div class="commande-demain"><div class="cd-tete"><b>Réserve pour demain</b><span>${virg(tot)} / ${cap} kg</span></div>
@@ -302,7 +304,7 @@ export function creerUI({ jeu, scene }) {
       const qui = e.equipe.filter(x => J.presentA(x, k)).map(x => `${ICONES_ROLE[x.role]} ${x.nom}`).join(' · ');
       let conseil = 'Pas encore de chiffres : attends la fin d’une journée.';
       if (t) conseil = s.stock / t > .2 ? '<b class="rouge">Rupture de stock</b> : commande plus de grain.'
-        : s.station / t > .5 ? '<b class="vert">Ça coince</b> : il manque du monde ou des places à ce moment.'
+        : s.station / t > .5 ? '<b class="rouge">Ça coince</b> : il manque du monde ou des places à ce moment.'
         : s.station / t > .2 ? 'Ça coince parfois : une personne de plus peut se rentabiliser.'
         : 'Ce sont les clients qui manquent : inutile d’ajouter du monde.';
       const tf = e.tarifs[k] ?? 1;
@@ -320,19 +322,103 @@ export function creerUI({ jeu, scene }) {
     return h;
   }
 
+  // La carte : chaque produit, son prix, ce qu'il coûte, ce qu'il rapporte, et ce qui s'est vendu hier
+  const coutProduit = (e, id) => { const p = J.CATALOGUE_CARTE[id]; return (p.cafe ? J.coutTasse(e) : 0) + (p.lait ? LAIT.prixPack / LAIT.doses : 0) + (p.stock ? VIENNOISERIES.cout : p.cout); };
+  function ongletCarte(e, soir) {
+    const hier = e.bilans.at(-1)?.produits || {}, totalHier = Object.values(hier).reduce((s, p) => s + p.ca, 0), nb = J.nbProduits(e);
+    const v = J.multVariete(e) - 1;
+    let h = `<p class="legende">Chaque client prend une boisson, et parfois un extra. Plus un produit est sous son <b>prix juste</b>, plus il se vend ; au-dessus, les clients le boudent et la note baisse. ${nb} produits à la carte : ${Math.abs(v) < .001 ? 'affluence normale' : `<b class="${v > 0 ? 'vert' : 'rouge'}">${pct(v)} de clients</b>`} (1,5 % par produit au-delà de 4).</p>`;
+    const moy = (e2, id) => { let s = 0; for (let k = 0; k < MOMENTS.length; k++) s += (J.partsCarte(e2, k, false)[id] || 0) * J.HEURES_MOMENT[k]; return s / J.HEURES_JOUR; };
+    h += CARTE.map(p => {
+      const ouvert = J.produitOuvert(e, p), actif = J.produitActif(e, p.id), prix = J.prixProduit(e, p.id), juste = J.prixJusteProduit(e, p.id), cout = coutProduit(e, p.id);
+      if (!ouvert) {
+        const besoin = (p.req || []).filter(r => r === 'buse' ? !J.aBuse(e) : !J.a(e, r)).map(r => r === 'buse' ? 'la buse à lait (Travaux) ou une Vapore Duo' : T[r].nom.toLowerCase());
+        return carte({ icone: p.icone, nom: p.nom, desc: `${p.desc} <i>Pour l’avoir : ${besoin.join(', ') || virg(p.rep) + ' ★'}.</i>`, cls: 'verrou' });
+      }
+      const r = prix / juste, ventes = hier[p.id], part = actif ? moy(e, p.id) : 0;
+      const etat = `<span class="prix-etat ${r > 1.1 ? 'rouge' : r < .85 ? 'miel' : 'vert'}">${r > 1.1 ? 'trop cher' : r < .85 ? 'bradé' : 'bon prix'}</span>`;
+      const reglage = p.id === 'espresso' ? `<button class="btn mini" data-ouvrir-prix>Régler</button>`
+        : `<div class="prix-produit"><button class="btn mini" data-produit="${p.id}:prix:${(prix - .1).toFixed(2)}">−</button><b>${fmt(prix)}</b><button class="btn mini" data-produit="${p.id}:prix:${(prix + .1).toFixed(2)}">+</button></div>`
+          + `<button class="btn mini${actif ? ' vert' : ''}" data-produit="${p.id}:on:${actif ? 0 : 1}">${actif ? 'À la carte' : 'Ajouter'}</button>`;
+      const desc = `${p.id === 'espresso' ? fmt(prix) + ' · ' : ''}prix juste ${fmt(juste)} ${etat} · coûte ${fmt(cout)} · marge <b>${fmt(prix - cout)}</b>`
+        + (actif ? `<br>${Math.round(part * 100)} % des clients en prennent${ventes ? ` · hier : ${Math.round(ventes.n)} vendus, ${fmt(ventes.ca)}${totalHier ? ` (${Math.round(ventes.ca / totalHier * 100)} % du CA)` : ''}` : ''}` : `<br><i>${p.desc}</i>`)
+        + (p.cuisine && actif && !e.equipe.some(x => x.role === 'cuisine') ? '<br><b class="rouge">Personne en cuisine : il ne se vend pas.</b>' : '')
+        + (p.lait && actif && e.lait <= 0 ? '<br><b class="rouge">Plus de lait : commande-en dans la Réserve.</b>' : '')
+        + (p.stock && actif && !e.viennoiseries.commande ? '<br><b class="rouge">Aucun croissant commandé pour demain (Réserve).</b>' : '');
+      return carte({ icone: p.icone, nom: p.nom, tags: p.type === 'extra' ? '<span class="tag cat">extra</span>' : '', desc, bouton: reglage, cls: actif ? 'actuelle' : '' });
+    }).join('');
+    h += `<p class="legende">Les tarifs du Planning (rush, creux) s’appliquent à toute la carte. Les prix se changent à tout moment.</p>`;
+    return h;
+  }
+
+  // Les clients : notoriété, fidélité et campagnes de marketing
+  function ongletClients(e, soir) {
+    const f = e.fidelite, bonus = J.bonusFidelite(e), hier = e.bilans.at(-1);
+    let h = `<div class="tresorerie"><div><small>Notoriété</small><b>${Math.round(e.notoriete / 2 * 100)} %</b></div><div><small>Note</small><b>${virg(e.rep, 2)} ★</b></div><div><small>Fidèles</small><b>${f.active ? Math.round(f.membres) : '—'}</b></div></div>`;
+    h += `<p class="legende">La <b>notoriété</b> monte avec le bouche-à-oreille : chaque client content en parle. Le marketing l’accélère ; la <b>note</b>, elle, dépend de ce que les clients trouvent chez toi.</p>`;
+    h += `<div class="section-titre">Carte de fidélité</div>`;
+    if (f.active) {
+      h += carte({ icone: '💳', nom: `${Math.round(f.membres)} membres`, tags: '<span class="tag">active</span>',
+        desc: `Le 10e café offert. Les membres reviennent plus souvent : <b class="vert">+${Math.round(bonus * 100)} % de clients</b>. Ce que ça coûte : environ ${fmt((hier?.remises || 0))} de cafés offerts hier.${hier?.nouveauxFideles != null ? ` Hier : ${hier.nouveauxFideles >= 0 ? '+' : ''}${Math.round(hier.nouveauxFideles)} membres.` : ''} Des journées décevantes font décrocher des membres.`,
+        bouton: `<button class="btn mini rouge" data-fidelite="0">Arrêter</button>` });
+    } else {
+      h += carte({ icone: '💳', nom: 'Lancer la carte de fidélité', desc: `Le 10e café offert. Les clients ravis s’inscrivent (jusqu’à +${Math.round(FIDELITE.bonusMax * 100)} % de clients avec beaucoup de membres). Impression des cartes : ${fmt(FIDELITE.lancement)}.`,
+        bouton: btnPrix(FIDELITE.lancement, 'data-fidelite="1"', e, soir, `Lancer · ${fmt(FIDELITE.lancement)}`) });
+    }
+    h += `<div class="section-titre">Marketing</div><p class="legende">Une campagne se lance le soir et dure quelques jours. Elle attire du monde… encore faut-il pouvoir les servir !</p>`;
+    h += MARKETING.map(m => {
+      const actif = (e.campagnes || []).find(c => c.id === m.id), verrou = e.rep < (m.rep || 0);
+      const effets = [m.demande ? `+${Math.round(m.demande * 100)} % de clients` : '', m.noto ? `+${Math.round(m.noto / 2 * 100)} point${m.noto > .02 ? 's' : ''} de notoriété` : '', m.bouche ? 'bouche-à-oreille plus rapide' : ''].filter(Boolean).join(', ');
+      const bouton = actif ? `<span class="tag-gros">encore ${actif.jours} j</span>` : verrou ? `<span class="tag-gros verrou">${virg(m.rep)} ★</span>` : btnPrix(m.prix, `data-campagne="${m.id}"`, e, soir);
+      return carte({ icone: m.icone, nom: m.nom, desc: `${m.desc} <b>${effets}</b>, pendant ${m.jours} jour${m.jours > 1 ? 's' : ''}.`, bouton, cls: actif ? 'actuelle' : verrou ? 'verrou' : '' });
+    }).join('');
+    if (hier?.avis?.length) h += `<div class="section-titre">Ce qu’ils ont dit hier</div>` + hier.avis.map(x => `<p class="legende">${'★'.repeat(x.etoiles)} « ${x.texte} » · ${x.nom}</p>`).join('');
+    return h;
+  }
+
   // Finances : trésorerie, mois en cours, historique, banque
   function compte(m, partiel) {
-    const res = m.resultat ?? (m.ca - m.achats - m.salaires - m.loyer - m.energie - m.entretien - m.interets);
-    return `<div class="journal-bilan">${ligneCompte('Chiffre d’affaires', m.ca)}${ligneCompte('Achats (grain, lait, consommables)', -m.achats)}${ligneCompte('Salaires et charges', -m.salaires)}`
-      + `${ligneCompte('Loyer et assurance', -m.loyer)}${ligneCompte('Énergie', -m.energie)}${ligneCompte('Entretien', -m.entretien)}${m.interets > .5 ? ligneCompte('Intérêts et agios', -m.interets) : ''}`
+    const res = m.resultat ?? J.resultatMois(m);
+    return `<div class="journal-bilan">${ligneCompte('Chiffre d’affaires', m.ca)}${m.primes ? ligneCompte('Primes (défis, mamie)', m.primes) : ''}${ligneCompte('Achats (grain, lait, ingrédients)', -m.achats)}${ligneCompte('Salaires et charges', -m.salaires)}`
+      + `${ligneCompte('Loyer et assurance', -m.loyer)}${ligneCompte('Énergie', -m.energie)}${ligneCompte('Entretien', -m.entretien)}${m.marketing ? ligneCompte('Marketing', -m.marketing) : ''}${m.interets > .5 ? ligneCompte('Intérêts et agios', -m.interets) : ''}`
       + `${m.impots ? ligneCompte('Impôt (15 %)', -m.impots) : ''}${ligneCompte(partiel ? 'Résultat (avant loyer)' : 'Résultat', res, 'total')}</div>`
       + (m.investissements ? `<p class="legende">Investissements (matériel, travaux, déco) : ${fmt(m.investissements)}. Ils sortent de la caisse mais ne comptent pas dans le résultat.</p>` : '');
   }
+  // ---------- Courbes : les 4 dernières semaines, jour par jour, et les mois passés ----------
+  const COURBES = [
+    ['ca', 'Chiffre d’affaires', b => b.recettes, fmt], ['resultat', 'Résultat', b => b.benefice, montant],
+    ['caisse', 'Caisse', b => b.caisse, montant], ['clients', 'Clients', b => b.clients, v => Math.round(v).toLocaleString('fr-FR')],
+    ['note', 'Note', b => b.note, v => virg(v, 2) + ' ★', false],
+  ];
+  let courbe = 'ca';
+  function courbes(e) {
+    const [, nom, val, f, depuisZero = true] = COURBES.find(c => c[0] === courbe) || COURBES[0];
+    const jours = e.bilans.filter(b => val(b) != null);
+    let h = `<div class="section-titre">Courbes</div><div class="choix-courbe">` + COURBES.map(([id, n]) => `<button class="${id === courbe ? 'choisi' : ''}" data-courbe="${id}">${n}</button>`).join('') + `</div>`;
+    if (jours.length < 2) return h + `<p class="legende">Les courbes apparaissent après deux journées.</p>`;
+    const W = 320, H = 120, g = 26, vs = jours.map(val), lo = depuisZero ? Math.min(0, ...vs) : Math.max(1, Math.min(...vs) - .15), hi = Math.max(...vs, lo + (depuisZero ? 1e-6 : .3));
+    const x = k => g + k * (W - g - 6) / (jours.length - 1), y = v => 8 + (H - 22) * (1 - (v - lo) / (hi - lo));
+    const pts = vs.map((v, k) => `${x(k).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    const zero = lo < 0 ? `<line x1="${g}" x2="${W - 6}" y1="${y(0)}" y2="${y(0)}" class="zero"/>` : '';
+    const lundis = jours.map((b, k) => b.date.startsWith('Lundi') ? `<line x1="${x(k)}" x2="${x(k)}" y1="8" y2="${H - 14}" class="sem"/><text x="${x(k)}" y="${H - 2}">${b.date.split(' ').slice(1, 3).join(' ')}</text>` : '').join('');
+    h += `<div class="courbe"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${nom} des ${jours.length} derniers jours">${lundis}${zero}`
+      + `<text x="2" y="12">${f(hi)}</text><text x="2" y="${H - 16}">${f(lo)}</text>`
+      + `<polyline points="${pts}"/>${vs.map((v, k) => `<circle cx="${x(k)}" cy="${y(v)}" r="${k === vs.length - 1 ? 3.2 : 1.8}"><title>${jours[k].date} : ${f(v)}</title></circle>`).join('')}</svg>`
+      + `<p class="legende">${nom} des ${jours.length} derniers jours · hier : <b>${f(vs.at(-1))}</b> · moyenne : ${f(vs.reduce((s, v) => s + v, 0) / vs.length)}</p></div>`;
+    if (e.historiqueMois.length >= 1) {
+      const ms = e.historiqueMois.slice(-6), mx = Math.max(1, ...ms.map(m => Math.max(m.ca, Math.abs(m.resultat))));
+      h += `<div class="mois-barres">` + ms.map(m => `<div><span class="mb"><i class="ca" style="height:${m.ca / mx * 100}%"></i><i class="${m.resultat < 0 ? 'neg' : 'res'}" style="height:${Math.abs(m.resultat) / mx * 100}%"></i></span><small>${m.nom.slice(0, 4)}</small></div>`).join('')
+        + `</div><p class="legende"><i class="pastille-ca"></i> chiffre d’affaires <i class="pastille-res"></i> résultat, mois par mois</p>`;
+    }
+    return h;
+  }
+
   function ongletFinances(e, soir) {
     const j = J.joursAvantLoyer(e), loyer = J.loyerMois(e) + MOIS.assurance, entretien = J.entretienMois(e), mens = e.pret?.mensualite || 0;
     let h = `<div class="tresorerie"><div><small>Caisse</small><b class="${e.argent < 0 ? 'rouge' : ''}">${montant(e.argent)}</b></div>
       <div><small>Fin du mois</small><b>${j === 0 ? 'ce soir' : `dans ${j} j`}</b></div><div><small>À payer ce jour-là</small><b>${fmt(loyer + entretien + mens)}</b></div></div>`;
     h += `<p class="legende">Le ${MOIS.jours}e jour : loyer et assurance ${fmt(loyer)}, entretien du matériel ${fmt(entretien)}${mens ? `, mensualité du prêt ${fmt(mens)}` : ''}, et 15 % d’impôt sur le résultat s’il est positif.${e.argent < 0 ? ` <b class="rouge">Découvert : ${virg(DECOUVERT.agios * 100 * 365, 0)} % d’agios par an. Sous ${montant(DECOUVERT.faillite)}, c’est la faillite.</b>` : ''}</p>`;
+    h += courbes(e);
     h += `<div class="section-titre">Mois en cours</div>` + compte(e.mois, true);
     if (e.historiqueMois.length) {
       h += `<div class="section-titre">Mois passés</div><div class="bilans mois"><span></span><span>CA</span><span>Salaires</span><span>Résultat</span>`
@@ -451,7 +537,7 @@ export function creerUI({ jeu, scene }) {
     const nb = nbAchetables(e);
     let h = `<div class="onglets">` + ONGLETS.map(([id, nom]) => `<button class="onglet${id === onglet ? ' choisi' : ''}" data-onglet="${id}">${nom}${nb[id] ? `<span class="pastille">${nb[id]}</span>` : ''}</button>`).join('') + `</div>`;
     if (soir && !e.faillite) h += `<button class="btn vert" data-ouvrir style="width:100%;margin:2px 0 8px">☀️ Ouvrir le café (7 h)</button>`;
-    const f = { catalogue: ongletCatalogue, equipe: ongletEquipe, planning: ongletPlanning, finances: ongletFinances, entretien: ongletEntretien, travaux: ongletTravaux }[onglet] || ongletBilan;
+    const f = { carte: ongletCarte, clients: ongletClients, catalogue: ongletCatalogue, equipe: ongletEquipe, planning: ongletPlanning, finances: ongletFinances, entretien: ongletEntretien, travaux: ongletTravaux }[onglet] || ongletBilan;
     h += f(e, soir);
     if (h !== dernierHtml) { dernierHtml = h; $('t-liste').innerHTML = h; }
   }
@@ -468,6 +554,24 @@ export function creerUI({ jeu, scene }) {
     }
     if (d.boisson) { const r = J.choisirBoisson(e, d.boisson); if (r === 'ok') { sons.clic(); jeu.sauver(); } else if (r === 'verrou') toast('Il faut une meilleure note pour cette boisson.'); else if (r === 'ferme') toast('La boisson du jour se prépare le soir.'); majTravaux(); return; }
     if (d.formule) { const [id, v] = d.formule.split(':'), r = J.reglerFormule(e, id, v === '1'); if (r === 'ok') { sons.clic(); jeu.sauver(); } else if (r === 'ferme') toast('Les formules se préparent le soir.'); majTravaux(); return; }
+    if (d.courbe) { courbe = d.courbe; sons.clic(); majTravaux(); return; }
+    if (d.produit) {
+      const [id, champ, v] = d.produit.split(':'), r = J.regleProduit(e, id, champ, +v);
+      if (r === 'ok') { sons.clic(); jeu.sauver(); scene.majDecor(e); if (champ === 'on') toast(+v ? `${J.CATALOGUE_CARTE[id].icone} <b>${J.CATALOGUE_CARTE[id].nom}</b> à la carte.` : `${J.CATALOGUE_CARTE[id].nom} retiré de la carte.`); }
+      majTravaux(); return;
+    }
+    if ('ouvrirPrix' in d) { ouvrir('p-prix'); $('x-curseur').value = e.prix; $('x-dose').value = e.dosage; majPrix(); return; }
+    if (d.campagne) {
+      const m = J.CATALOGUE_MARKETING[d.campagne], r = J.lancerCampagne(e, d.campagne);
+      if (r === 'ok') { sons.achat(); jeu.sauver(); toast(`${m.icone} <b>${m.nom}</b> : c’est parti pour ${m.jours} jour${m.jours > 1 ? 's' : ''} !`); }
+      else if (r === 'argent') toast("Pas encore assez d'argent."); else if (r === 'ferme') toast('Les campagnes se lancent le soir.');
+      majTravaux(); return;
+    }
+    if (d.fidelite) {
+      if (d.fidelite === '1') { const r = J.lancerFidelite(e); if (r === 'ok') { sons.achat(); jeu.sauver(); toast('💳 <b>Carte de fidélité lancée</b> : les clients ravis vont s’inscrire.'); } else if (r === 'argent') toast("Pas encore assez d'argent."); else if (r === 'ferme') toast('Ça se lance le soir.'); majTravaux(); return; }
+      bulle('Arrêter la carte de fidélité ? Les membres seront perdus.', { titre: 'Fidélité', boutons: [{ label: 'Non', cls: 'vert' }, { label: 'Arrêter', cls: 'rouge', fn: () => { J.arreterFidelite(E()); jeu.sauver(); majTravaux(); } }] });
+      return;
+    }
     if (d.tarif) { const [k, v] = d.tarif.split(':').map(Number); if (J.reglerTarif(e, k, v) === 'ok') { sons.clic(); jeu.sauver(); } majTravaux(); return; }
     if (d.detartrer) { const p = +d.detartrer; if (res(J.detartrer(e, p)) === 'ok') toast(`Machine du poste ${p + 1} détartrée : elle retrouve tout son goût.`); majTravaux(); return; }
     if (d.poste) { poste = +d.poste; sons.clic(); majTravaux(); return; }
@@ -494,7 +598,11 @@ export function creerUI({ jeu, scene }) {
         { label: 'Signer', cls: 'vert', fn: () => { if (J.emprunter(E(), p.id) === 'ok') { sons.achat(); jeu.sauver(); toast(`<b>+${fmt(p.montant)}</b> sur le compte. Investis bien !`); } majTravaux(); } }] });
       return;
     }
-    if (d.achat) { const id = d.achat; if (res(J.acheter(e, id)) === 'ok') toast(`<b>${T[id].nom}</b> : ${MOTS_TRAVAUX[id] || "c'est fait !"}`, 5000); majTravaux(); }
+    if (d.achat) {
+      const id = d.achat, nouv = CARTE.filter(p => (p.req || []).includes(id) && J.produitOuvert({ ...e, achats: [...e.achats, id] }, p)).map(p => p.icone + ' ' + p.nom.toLowerCase());
+      if (res(J.acheter(e, id)) === 'ok') toast(`<b>${T[id].nom}</b> : ${MOTS_TRAVAUX[id] || "c'est fait !"}${nouv.length ? `<br>Nouveau à la carte : ${nouv.join(', ')}.` : ''}`, 6000);
+      majTravaux();
+    }
   });
 
   function majPrix() {
@@ -503,7 +611,7 @@ export function creerUI({ jeu, scene }) {
     $('x-prix').innerHTML = fmt(e.prix) + (tf !== 1 ? ` <small class="tarif-moment">${J.momentActuel(e).nom.toLowerCase()} : ${fmt(J.prixEffectif(e))}</small>` : '');
     $('x-juste').textContent = `prix juste ${fmt(pj)}`;
     $('x-clients').textContent = J.ouvert(e) ? `${Math.round(b.parHeure.demande)}/h` : 'fermé';
-    $('x-marge').innerHTML = `${fmt(J.panier(e) - J.coutTasse(e))} <em>ticket ${fmt(J.panier(e))} · grain ${fmt(J.coutTasse(e))}</em>`;
+    $('x-marge').innerHTML = `${fmt(J.panier(e) - J.coutTasse(e) * J.partGrain(e))} <em>ticket ${fmt(J.panier(e))} · grain ${fmt(J.coutTasse(e) * J.partGrain(e))}</em>`;
     const fd = J.facteurDosage(e), k = J.consoParTasse(e);
     $('x-dosage').textContent = `${virg(e.dosage, e.dosage % 1 ? 1 : 0)} g`;
     $('x-dose-effet').textContent = Math.abs(k - 1) < .01 ? 'référence' : `goût ${fd >= 1 ? '+' : '−'}${Math.round(Math.abs(fd - 1) * 100)} % · grain ${k >= 1 ? '+' : '−'}${Math.round(Math.abs(k - 1) * 100)} %`;
@@ -576,13 +684,54 @@ export function creerUI({ jeu, scene }) {
     if (p.dataset.panne) toucherStation(+p.dataset.panne);
   });
 
+  // ---------- Tutoriel : mamie montre l'écran, bulle après bulle (le temps s'arrête pendant ce temps) ----------
+  const ETAPES = {
+    jour: [
+      [null, 'Bienvenue derrière le bar ! Je te montre l’essentiel en quelques bulles. Le temps est arrêté pendant ce temps.'],
+      ['.carte-argent', 'En haut : ta caisse, ta note (les étoiles) et ce que tu encaisses par heure. L’heure et la date sont juste en dessous.'],
+      ['#puces', 'Ces pastilles disent ce qui limite tes ventes en ce moment : l’équipe, les places, le grain… ou les clients. Touche-les pour aller droit au problème.'],
+      ['#objectif', 'Mon conseil du moment. Chaque objectif atteint rapporte une petite prime.'],
+      ['#b-stock', 'La Réserve : ton grain, au kilo. Sans grain, pas de café ! Les commandes normales se passent le soir ; en journée, seulement en urgence et au prix fort.'],
+      ['#b-prix', 'Le prix de l’espresso. Reste près du prix juste : trop cher, les clients fuient et la note baisse ; trop bas, tu travailles pour rien.'],
+      ['#b-travaux', 'Le Journal : ta carte, ton équipe, le planning, tes clients, tes comptes… C’est là que tout se décide, le soir après 19 h.'],
+      ['#rush', 'La vitesse du temps : ×1, ×2, ×3 ou pause. Une journée dure 6 minutes à ×1.'],
+      [null, 'Pour ce premier jour, regarde le café tourner jusqu’à 19 h. Ensuite, je te montrerai le journal du soir.'],
+    ],
+    soir: [
+      ['#t-liste .journal-bilan', 'Le bilan de ta journée : ce que tu as encaissé, ce que tu as dépensé, et le résultat.'],
+      ['#t-liste .onglets', 'Chaque onglet gère une partie du café : la Carte (tes produits et leurs prix), l’Équipe, le Planning, les Clients (fidélité, publicité), les Finances (et leurs courbes)…'],
+      ['#t-liste .commande-demain', 'Le plus urgent chaque soir : le grain pour demain. « Pour demain » commande juste ce qu’il faut, livré à 7 h.'],
+      ['#t-liste [data-ouvrir]', 'Quand tout est prêt, ouvre le café. La nuit attend que tu aies fini : prends ton temps.'],
+    ],
+  };
+  let tutoEnCours = false;
+  function tutoriel(id) {
+    const etapes = ETAPES[id]; if (!etapes || tutoEnCours) return;
+    tutoEnCours = true;
+    const avant = jeu.vitesse || 1; jeu.vitesse = 0; majVitesse();
+    let k = 0;
+    const etape = () => {
+      document.querySelectorAll('.tuto-cible').forEach(x => x.classList.remove('tuto-cible'));
+      if (k >= etapes.length) { tutoEnCours = false; jeu.vitesse = avant; majVitesse(); $('bulle').classList.remove('haut', 'bas'); return; }
+      const [sel, texte] = etapes[k], el = sel ? document.querySelector(sel) : null, visible = el && el.offsetParent !== null;
+      if (visible) { el.classList.add('tuto-cible'); el.scrollIntoView?.({ block: 'nearest' }); }
+      const dernier = k === etapes.length - 1, suivant = () => { k++; etape(); };
+      bulle(texte, { titre: `Mamie Odette · ${k + 1}/${etapes.length}`,
+        boutons: dernier ? [{ label: 'Compris !', cls: 'vert', fn: suivant }] : [{ label: 'Passer', fn: () => { k = etapes.length; etape(); } }, { label: 'Suivant', cls: 'vert', fn: suivant }] });
+      // La bulle se met à l'écart de ce qu'elle montre
+      if (visible) { const r = el.getBoundingClientRect(); $('bulle').classList.add(r.top + r.height / 2 > innerHeight / 2 ? 'haut' : 'bas'); }
+    };
+    etape();
+  }
+  $('c-tuto').onclick = () => { fermer(); tutoriel('jour'); };
+
   // ---------- Guide : fait pulser ce qu'il faut toucher pour l'objectif en cours ----------
   let cibleGuide = null;
   function guider(o, e) {
     let el = null;
     if (o && !J.ouvert(e)) {
       if (o.id === 'commande') el = $('b-stock');
-      else if (['embauche', 'peinture', 'machine', 'equipe3', 'cloison', 'terrasse'].includes(o.id)) el = $('b-travaux');
+      else if (['embauche', 'peinture', 'carte', 'machine', 'fidelite', 'equipe3', 'cloison', 'terrasse'].includes(o.id)) el = $('b-travaux');
     }
     if (el === cibleGuide) return;
     cibleGuide?.classList.remove('guide'); cibleGuide = el; el?.classList.add('guide');
@@ -596,18 +745,21 @@ export function creerUI({ jeu, scene }) {
     argentAffiche = Math.abs(e.argent - argentAffiche) < .5 ? e.argent : argentAffiche + (e.argent - argentAffiche) * Math.min(1, dt * 7);
     $('argent').textContent = fmt(argentAffiche);
     $('argent').classList.toggle('rouge', e.argent < 0);
-    $('ips').textContent = J.ouvert(e) ? '+' + fmt(revenuLisse) + '/h' : `jour ${e.jour}`;
+    // L'en-tête d'un gérant : l'heure et la date, puis l'affluence en mots simples (pas d'euros qui défilent)
+    $('ips').textContent = J.ouvert(e) ? heureTexte(e.horloge) : 'Fermé';
     const ph = res.parHeure;
-    $('tasses').innerHTML = J.ouvert(e) ? `${Math.round(ph?.ventes || 0)} clients/h${ph && ph.demande > ph.ventes + .5 ? ` · <b class="rouge">${Math.round(ph.demande - ph.ventes)} perdus/h</b>` : ''}<br><span class="moment">${J.meteoDuJour(e).icone} ${heureTexte(e.horloge)} · ${J.dateTexte(e)}</span>`
-      : `Fermé<br><span class="moment">🌙 ${J.dateTexte(e)} · ${e.faillite ? 'faillite' : 'à toi d’ouvrir'}</span>`;
+    $('tasses').innerHTML = J.ouvert(e) ? `${J.dateTexte(e)} · ${J.meteoDuJour(e).nom.toLowerCase()}<br><span class="moment">${Math.round(ph?.ventes || 0)} clients/h${ph && ph.demande > ph.ventes + .5 ? ` · <span class="rouge">${Math.round(ph.demande - ph.ventes)} repartent</span>` : ''}</span>`
+      : `${J.dateTexte(e)}<br><span class="moment">${e.faillite ? 'faillite' : 'la nuit · à toi d’ouvrir'}</span>`;
     majDecision(e);
     const c = res.cap;
     STATIONS.forEach((s, i) => {
       const el = etiquettes[i], [x, y] = scene.projeter(scene.ANCRES[i]), st = e.st[i];
       el.style.left = x + 'px'; el.style.top = y + 'px';
-      el.querySelector('.niv').textContent = st.panne ? 'PANNE' : i === 0 ? kg(e.stock[e.maison]) : !c ? '' : i === 2 ? `${c.baristas} 👤` : i === 3 ? `${c.enSalle} 👤` : `${Math.round(c.moulin)}/h`;
-      el.querySelector('.auto').classList.toggle('on', !!c && (i === 2 ? c.baristas > 0 : i === 3 ? c.enSalle > 0 : false));
-      el.classList.toggle('goulot', res.goulot.type === 'station' && res.goulot.i === i && !st.panne);
+      // Pas d'étiquettes de jeu arcade : un poste ne se signale que s'il a un problème (panne, débordé, plus de grain)
+      const goulot = res.goulot.type === 'station' && res.goulot.i === i && !st.panne, vide = i === 0 && J.ouvert(e) && e.stock[e.maison] <= 0;
+      el.querySelector('.niv').textContent = st.panne ? 'en panne' : goulot ? 'débordé' : vide ? 'plus de grain' : '';
+      el.hidden = !(st.panne || goulot || vide);
+      el.classList.toggle('goulot', goulot || vide);
       el.classList.toggle('panne', !!st.panne);
     });
     accUI += dt;
@@ -638,6 +790,7 @@ export function creerUI({ jeu, scene }) {
       const cmax = Math.max(...e.calcaire); if (cmax >= .5) puces += `<span class="puce miel" data-journal="entretien">Calcaire : ${Math.round(cmax * 100)} %</span>`;
       const fr = J.fraicheur(e, e.maison); if (fr < .9) puces += `<span class="puce miel" data-stock>Grain rassis : −${Math.round((1 - fr) * 100)} % de goût</span>`;
       if (J.aBuse(e) && e.lait < LAIT.doses * 2) puces += `<span class="puce ${e.lait <= 0 ? 'rouge' : 'miel'}" data-stock>Lait : ${e.lait <= 0 ? 'vide' : virg(e.lait / LAIT.doses) + ' L'}</span>`;
+      (e.campagnes || []).forEach(c => { const m = J.CATALOGUE_MARKETING[c.id]; if (m) puces += `<span class="puce vert" data-journal="clients">${m.icone} ${m.nom} · ${c.jours} j</span>`; });
       e.evts.forEach(v => { puces += `<span class="puce ${v.id === 'cafemax' || v.id === 'nettoyage' ? 'rouge' : 'vert'}">${v.nom} · ${Math.ceil(v.reste / 30 * 60)} min</span>`; });
       e.st.forEach((s, i) => { if (s.panne) puces += `<span class="puce rouge" data-panne="${i}">Panne : ${STATIONS[i].court}</span>`; });
       $('puces').innerHTML = puces;
@@ -648,6 +801,11 @@ export function creerUI({ jeu, scene }) {
       $('b-carnet').innerHTML = `Carnet<small>${e.meta.succes.length} succès</small>`;
       if (ouvert === 'fiche') majFiche();
       if (ouvert === 'p-prix') majPrix();
+      // Le tutoriel : le premier matin (après le mot d'accueil de mamie), puis le premier soir
+      if (jeu.enJeu && $('bulle').hidden && !tutoEnCours && !e.faillite) {
+        if (!e.meta.tutoJour && e.meta.histoire.includes('intro') && J.ouvert(e)) { e.meta.tutoJour = true; jeu.sauver(); tutoriel('jour'); }
+        else if (!e.meta.tutoSoir && !J.ouvert(e) && ouvert === 'p-travaux' && onglet === 'bilan') { e.meta.tutoSoir = true; jeu.sauver(); setTimeout(() => tutoriel('soir'), 300); }
+      }
     }
     accPanneau += dt;
     if (accPanneau > 1) { accPanneau = 0; if (ouvert === 'p-stock') majStock(); if (ouvert === 'p-travaux') majTravaux(); if (ouvert === 'p-carnet') majCarnet(); }
@@ -676,5 +834,5 @@ export function creerUI({ jeu, scene }) {
       b.onclick = () => { const msg = J.choisirDecision(E(), k); if (msg) toast(msg, 5000); sons.clic(); jeu.sauver(); majDecision(E()); }; z.appendChild(b); });
   }
   function ouvrirJournal(o) { if (o) onglet = o; ouvrir('p-travaux'); majTravaux(); }
-  return { maj, toast, bulle, pop, parole, fermer, toucherStation, objectifAtteint, finJournee, ouvrirJournal, majVitesse };
+  return { maj, toast, bulle, pop, parole, fermer, toucherStation, objectifAtteint, finJournee, ouvrirJournal, majVitesse, tutoriel };
 }

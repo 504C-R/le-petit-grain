@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Petit Grain">
-<meta name="description" content="Le Petit Grain : reprends le café de mamie, améliore-le pièce par pièce et fais-en une chaîne connue. Un idle tycoon en 3D.">
+<meta name="description" content="Le Petit Grain : reprends le café de mamie et gère-le pour de vrai : équipe, planning, carte, fidélité et comptes. Un jeu de gestion cosy en 3D.">
 <title>Le Petit Grain · Gestion</title>
 <meta name="theme-color" content="#C8874A">
 <link rel="manifest" href="manifest.webmanifest">
@@ -98,15 +98,15 @@
 
   <div class="panneau" id="p-prix" hidden>
     <div class="tete">
-      <div><h3>Prix de la tasse</h3><p class="desc">Trop cher, les clients fuient et la réputation baisse. Pas assez cher, tu travailles pour rien.</p></div>
+      <div><h3>Prix de l’espresso</h3><p class="desc">Il fait venir (ou fuir) les clients. Trop cher, la note baisse ; pas assez, tu travailles pour rien. Les autres prix sont dans le Journal, onglet Carte.</p></div>
       <button class="fermer" data-fermer aria-label="Fermer">✕</button>
     </div>
     <div class="prix-grand" id="x-prix">1,20 €</div>
-    <input type="range" id="x-curseur" min="0.5" max="8" step="0.05" value="1.2" aria-label="Prix de la tasse">
-    <div class="regle"><span>0,50 €</span><span id="x-juste">prix juste</span><span>8,00 €</span></div>
+    <input type="range" id="x-curseur" min="0.8" max="9" step="0.05" value="1.5" aria-label="Prix de l’espresso">
+    <div class="regle"><span>0,80 €</span><span id="x-juste">prix juste</span><span>9,00 €</span></div>
     <div class="stats" style="margin-top:10px">
       <div class="stat"><small>Clients</small><b id="x-clients">0</b></div>
-      <div class="stat"><small>Marge / tasse</small><b id="x-marge">0</b></div>
+      <div class="stat"><small>Marge / client</small><b id="x-marge">0</b></div>
     </div>
     <p class="alerte" id="x-avis"></p>
     <h5 class="dosage-titre">Dosage <b id="x-dosage">8 g</b> <small>par tasse</small></h5>
@@ -143,6 +143,7 @@
     <h5>Réglages</h5>
     <p class="installer" id="c-installer" hidden>📱 Pour l’avoir comme une appli : touche <b>Partager</b> (le carré avec la flèche), puis <b>« Sur l’écran d’accueil »</b>.</p>
     <div class="boutons reglages trois"><button class="btn mini vert" id="r-son">Son : activé</button><button class="btn mini vert" id="r-mus">Musique : activée</button><button class="btn mini vert" id="r-gfx">Graphismes : beaux</button></div>
+    <button class="lien" id="c-tuto">Revoir le tutoriel de mamie</button>
     <button class="lien" id="c-reset">Recommencer une partie de zéro</button>
   </div>
 
