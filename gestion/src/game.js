@@ -1,0 +1,861 @@
+// Logique pure du jeu — version « gestion » (v5) : aucun DOM, aucune 3D, aucun Date.now(). Testée par node --test.
+// Le hasard est passé en paramètre (rnd), pour que les tests soient reproductibles.
+// Une heure de jeu dure 30 s ; les capacités et la demande se comptent par heure, puis sont ramenées à la seconde.
+import {
+  GRAINS, G, STATIONS, TRAVAUX, T, SUCCES, HISTOIRE, DOSES_SAC, VILLES, INFOS_VILLES, OBJECTIFS, HABITUES, LAIT,
+  HORAIRES, COURBE_HEURE, MOMENTS, URGENCE, MACHINES, MOULINS, FOURNISSEURS, DUREE_DECISION, FRAICHEUR, TARIFS, CALCAIRE,
+  METEOS, FIABILITE_PREVISION, BOISSONS, MURS, SOLS, FORMULES, DEFIS, DOSAGE, PRENOMS_AVIS,
+  CAPACITE, DEMANDE_BASE, RESERVE_KG, PERSONNEL, TRAITS, PRENOMS_EMPLOYES, MOIS, ENERGIE, PRETS, DECOUVERT, ARGENT_DEPART,
+  JOURS_SEMAINE, AFFLUENCE_JOUR, NOMS_MOIS, SAISONS, VIENNOISERIES, NOTE, NOTORIETE, TICKET, CONSOMMABLES,
+} from './data.js';
+
+const M = Object.fromEntries(MACHINES.map(m => [m.id, m]));
+const MO = Object.fromEntries(MOULINS.map(m => [m.id, m]));
+const F = Object.fromEntries(FOURNISSEURS.map(f => [f.id, f]));
+const MET = Object.fromEntries(METEOS.map(x => [x.id, x])), BO = Object.fromEntries(BOISSONS.map(x => [x.id, x]));
+const FO = Object.fromEntries(FORMULES.map(x => [x.id, x]));
+const MU = Object.fromEntries(MURS.map(x => [x.id, x])), SO = Object.fromEntries(SOLS.map(x => [x.id, x]));
+const TR = Object.fromEntries(TRAITS.map(x => [x.id, x]));
+const PR = Object.fromEntries(PRETS.map(x => [x.id, x]));
+export { M as CATALOGUE_MACHINES, MO as CATALOGUE_MOULINS, F as CATALOGUE_FOURNISSEURS, MET as CATALOGUE_METEOS, BO as CATALOGUE_BOISSONS,
+  FO as CATALOGUE_FORMULES, MU as CATALOGUE_MURS, SO as CATALOGUE_SOLS, TR as CATALOGUE_TRAITS, PR as CATALOGUE_PRETS };
+
+const SPH = HORAIRES.secondesParHeure;
+export const HEURES_MOMENT = MOMENTS.map(m => m.a - m.de);
+
+// ---------- État ----------
+export function nouvelleMeta() {
+  return { succes: [], histoire: [], tasses: 0, totalGagne: 0, reparations: 0, critiques: 0, habitues: {}, nomCafe: '', ville: 0, clientsTotal: 0 };
+}
+export const nouvelleJournee = () => ({ recettes: 0, depenses: 0, charges: 0, tasses: 0, clients: 0, perdus: 0, satisfaction: 0,
+  viennoiseries: 0, invendus: 0,
+  moments: MOMENTS.map(() => ({ t: 0, ventes: 0, station: 0, clients: 0, stock: 0, stations: [0, 0, 0, 0] })),
+  heures: Array.from({ length: HORAIRES.fermeture - HORAIRES.ouverture }, () => ({ ventes: 0, recettes: 0, station: 0, clients: 0, stock: 0 })) });
+export const nouveauMois = () => ({ ca: 0, achats: 0, salaires: 0, loyer: 0, energie: 0, entretien: 0, interets: 0, impots: 0, investissements: 0 });
+const gerant = () => ({ id: 'toi', nom: 'Toi', role: 'barista', comp: 2, salaire: 0, trait: null, fatigue: 0, moral: 1, planning: [1, 1, 1, 1], formation: 0, heuresSemaine: 0, gerant: true });
+const candidatsDeDepart = () => [
+  { id: 'c1', nom: 'Nadia', role: 'salle', comp: 2, salaire: 13.6, trait: 'souriant' },
+  { id: 'c2', nom: 'Lucas', role: 'barista', comp: 2, salaire: 13.6, trait: 'rapide' },
+  { id: 'c3', nom: 'Théo', role: 'salle', comp: 1, salaire: 11.65, trait: 'apprenti' },
+];
+export function nouvelEtat(meta = nouvelleMeta()) {
+  return {
+    version: 5,
+    argent: ARGENT_DEPART, rep: NOTE.depart, nbAvis: 0, notoriete: NOTORIETE.depart, prix: 1.5, maison: 'premier',
+    stock: Object.fromEntries(GRAINS.map(g => [g.id, g.id === 'premier' ? 3 * DOSES_SAC : 0])),
+    debloques: ['premier'], achats: [], commandes: [], livraisonsMatin: [],
+    machines: ['occasion', null, null], moulin: 'manivelle', fournisseur: 'grossiste',
+    st: STATIONS.map(() => ({ niv: 1, manager: false, coup: 0, panne: null })),
+    equipe: [gerant()], candidats: candidatsDeDepart(), prochainId: 1,
+    pret: null, mois: nouveauMois(), historiqueMois: [], sauvetage: false, faillite: false,
+    abonnement: { grain: null, kg: 0 }, viennoiseries: { commande: 0, stock: 0 },
+    age: Object.fromEntries(GRAINS.map(g => [g.id, 0])), tarifs: [1, 1, 1, 1], calcaire: [0, 0, 0],
+    meteo: 'nuages', meteoDemain: 'soleil', boisson: 'aucune', deco: { mur: 'creme', sol: 'parquet', vus: ['creme', 'parquet'] }, formules: {}, defi: null,
+    dosage: DOSAGE.reference, service: 1,
+    evts: [], ruptureDepuis: 0, rupturesVues: 0, lait: 0, laitVide: false,
+    phase: 'service', horloge: HORAIRES.ouverture, nuitReste: 0, jour: 1,
+    journee: nouvelleJournee(), bilans: [], decision: null, decisionsDuJour: [],
+    objectif: 0, stats: { coups: 0, commandes: 0, nuits: 0, embauches: 0, formations: 0, pretsRembourses: 0 },
+    meta,
+  };
+}
+
+// ---------- Le café du joueur : son nom, et sa sauvegarde à emporter ----------
+export const NOM_PAR_DEFAUT = 'Le Petit Grain';
+export const nomCafe = e => e.meta.nomCafe || NOM_PAR_DEFAUT;
+export const nettoyerNom = s => String(s || '').replace(/[\u0000-\u001f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 22);
+export function exporterSauvegarde(e) {
+  const octets = new TextEncoder().encode(JSON.stringify(e));
+  let bin = ''; for (let k = 0; k < octets.length; k += 8192) bin += String.fromCharCode(...octets.subarray(k, k + 8192));
+  return 'PG5:' + btoa(bin);
+}
+export function importerSauvegarde(code) {
+  try {
+    const brut = String(code || '').trim().replace(/^PG5:/, '').replace(/\s+/g, '');
+    const bin = atob(brut), octets = Uint8Array.from(bin, c => c.charCodeAt(0));
+    const d = JSON.parse(new TextDecoder().decode(octets));
+    if (!d || typeof d !== 'object' || !d.meta || typeof d.argent !== 'number' || d.version !== 5) return null;
+    return restaurer(d);
+  } catch { return null; }
+}
+export function restaurer(d) {
+  const meta = Object.assign(nouvelleMeta(), d.meta || {});
+  const base = nouvelEtat(meta);
+  const e = Object.assign(base, d, { meta });
+  e.stock = Object.assign(nouvelEtat(meta).stock, d.stock || {});
+  e.stats = Object.assign(nouvelEtat(meta).stats, d.stats || {});
+  e.mois = Object.assign(nouveauMois(), d.mois || {});
+  e.journee = Object.assign(nouvelleJournee(), d.journee || {});
+  return e;
+}
+
+// ---------- Dérivés ----------
+export const a = (e, id) => e.achats.includes(id);
+export const machinesInstallees = e => e.machines.filter(Boolean).map(id => M[id]);
+export const nbPostes = e => 1 + (a(e, 'comptoir2') ? 1 : 0) + (a(e, 'agrandir') ? 1 : 0);
+export const nbMachines = e => machinesInstallees(e).length;
+export const tierMachine = e => machinesInstallees(e).some(m => m.visuel === 'machine_pro' || m.prix >= 12000) ? 2 : machinesInstallees(e).some(m => m.id !== 'occasion') ? 1 : 0;
+export const tierMoulin = e => MO[e.moulin].visuel === 'torrefacteur' ? 2 : e.moulin === 'manivelle' ? 0 : 1;
+export const aBuse = e => a(e, 'buse') || e.machines.includes('vapore');
+export const ouvert = e => e.phase === 'service';
+export const places = e => 4 + 2 * ['table3', 'table4', 'table5', 'table6'].filter(t => a(e, t)).length + (a(e, 'terrasse') ? 4 : 0) + (a(e, 'etage') ? 6 : 0);
+export const bonusDeco = e => (a(e, 'peinture') ? .2 : 0) + (a(e, 'plantes') ? .15 : 0) + (a(e, 'lampes') ? .15 : 0) + (a(e, 'enseigne') ? .25 : 0) + (a(e, 'ardoise') ? .1 : 0) + (a(e, 'fresque') ? .2 : 0)
+  + (a(e, 'tapis') ? .1 : 0) + (a(e, 'cheminee') ? .1 : 0) + (a(e, 'lustre') ? .15 : 0);
+export const villeInfo = e => INFOS_VILLES[VILLES[e.meta.ville % VILLES.length]] || INFOS_VILLES.Lyon;
+export const nomVille = e => VILLES[e.meta.ville % VILLES.length];
+export const menuLait = e => aBuse(e) && e.lait > 0;
+export const cafemaxOuvert = e => e.meta.histoire.includes('cafemax') || !!villeInfo(e).cafemax;
+export const prixTravaux = (e, t) => t.prix;
+export const disponible = (e, t) => !a(e, t.id) && (t.req || []).every(r => a(e, r));
+const depenser = (e, x, poste = 'achats') => { e.argent -= x; e.journee.depenses += x; e.mois[poste] = (e.mois[poste] || 0) + x; };
+
+// ---------- Calendrier ----------
+export const jourSemaine = e => (e.jour - 1) % 7;
+export const moisIndex = e => Math.floor((e.jour - 1) / MOIS.jours) % 12;
+export const jourDuMois = e => ((e.jour - 1) % MOIS.jours) + 1;
+export const saison = e => SAISONS.find(s => s.mois.includes(moisIndex(e))) || SAISONS[0];
+export const dateTexte = e => `${JOURS_SEMAINE[jourSemaine(e)]} ${jourDuMois(e)} ${NOMS_MOIS[moisIndex(e)].toLowerCase()}`;
+// Le jour (ou la nuit) de la fin de mois : 0 = ce soir. La nuit, le mois du jour est déjà clos.
+export const joursAvantLoyer = e => ouvert(e) ? MOIS.jours - ((e.jour - 1) % MOIS.jours) - 1 : MOIS.jours - (e.jour % MOIS.jours);
+
+// ---------- Décoration au choix ----------
+export const murActuel = e => MU[e.deco?.mur] || MU.creme;
+export const solActuel = e => SO[e.deco?.sol] || SO.parquet;
+export const harmonie = e => a(e, 'peinture') && murActuel(e).style === solActuel(e).style;
+export const prixDeco = (e, x) => (e.deco?.vus || []).includes(x.id) ? 0 : x.prix;
+export function choisirDeco(e, type, id) {
+  const x = (type === 'mur' ? MU : SO)[id];
+  if (!x) return 'indispo';
+  if (!a(e, 'peinture')) return 'peinture';
+  if (e.rep < (x.rep || 0)) return 'verrou';
+  if (ouvert(e)) return 'ferme';
+  if (e.deco[type] === id) return 'deja';
+  const p = prixDeco(e, x);
+  if (e.argent < p) return 'argent';
+  depenser(e, p, 'investissements'); e.deco[type] = id; if (!e.deco.vus.includes(id)) e.deco.vus.push(id);
+  return 'ok';
+}
+
+// ---------- Le personnel ----------
+export const HEURES_JOUR = HEURES_MOMENT.reduce((x, y) => x + y, 0);
+export const salaireMarche = comp => Math.round((PERSONNEL.smic + PERSONNEL.parNiveau * (comp - 1)) * 100) / 100;
+export const employe = (e, id) => e.equipe.find(p => p.id === id);
+export const heuresPlanifiees = p => p.formation ? 0 : p.planning.reduce((s, on, k) => s + (on ? HEURES_MOMENT[k] : 0), 0);
+export const presentA = (p, k) => !!p.planning[k] && !p.formation;
+export function vitesseEmploye(p) {
+  const [v0, v1] = PERSONNEL.vitesse[p.role] || PERSONNEL.vitesse.salle;
+  return (v0 + v1 * p.comp) * (p.trait === 'rapide' ? 1.15 : p.trait === 'distrait' ? .92 : 1) * (1 - .45 * (p.fatigue || 0));
+}
+export function coutJournee(p) {
+  if (p.gerant) return 0;
+  const h = heuresPlanifiees(p), normales = Math.max(0, Math.min(h, PERSONNEL.semaine - (p.heuresSemaine || 0)));
+  return p.salaire * PERSONNEL.charges * (normales + (h - normales) * PERSONNEL.supp);
+}
+export const masseSalarialeJour = e => e.equipe.reduce((s, p) => s + coutJournee(p), 0);
+export function genererCandidats(e, rnd = Math.random, n = 3) {
+  const roles = ['barista', 'salle', 'salle', 'barista', 'cuisine'];
+  e.candidats = Array.from({ length: n }, () => {
+    const role = roles[Math.floor(rnd() * roles.length) % roles.length];
+    const trait = TRAITS[Math.floor(rnd() * TRAITS.length) % TRAITS.length].id;
+    const comp = trait === 'apprenti' ? 1 : Math.min(5, 1 + Math.floor(rnd() * 3) + (rnd() < .2 ? 1 : 0));
+    const salaire = Math.round(salaireMarche(comp) * (trait === 'apprenti' ? .9 : 1 + (rnd() - .4) * .15) * 100) / 100;
+    return { id: 'c' + (e.prochainId++), nom: PRENOMS_EMPLOYES[Math.floor(rnd() * PRENOMS_EMPLOYES.length) % PRENOMS_EMPLOYES.length], role, comp, salaire: Math.max(PERSONNEL.smic, salaire), trait };
+  });
+  return e.candidats;
+}
+export function embaucher(e, id) {
+  const c = e.candidats.find(x => x.id === id); if (!c) return 'indispo';
+  e.candidats = e.candidats.filter(x => x.id !== id);
+  e.equipe.push({ ...c, id: 'e' + (e.prochainId++), fatigue: 0, moral: .8, planning: [1, 1, 0, 0], formation: 0, heuresSemaine: 0 });
+  e.stats.embauches++;
+  return 'ok';
+}
+export const indemnite = p => Math.round(p.salaire * PERSONNEL.charges * 7 * PERSONNEL.indemniteJours);
+export function renvoyer(e, id) {
+  const p = employe(e, id); if (!p || p.gerant) return 'indispo';
+  depenser(e, indemnite(p), 'salaires');
+  e.equipe = e.equipe.filter(x => x.id !== id);
+  return 'ok';
+}
+export const coutFormation = e => PERSONNEL.formation * (a(e, 'ecole') ? .5 : 1);
+export function former(e, id) {
+  const p = employe(e, id); if (!p) return 'indispo';
+  if (ouvert(e)) return 'ferme';
+  if (p.comp >= 5) return 'max';
+  if (p.formation) return 'deja';
+  const c = coutFormation(e); if (e.argent < c) return 'argent';
+  depenser(e, c, 'salaires'); p.formation = 1;
+  return 'ok';
+}
+export function reglerPlanning(e, id, k, on) {
+  const p = employe(e, id); if (!p || p.gerant || k < 0 || k >= MOMENTS.length) return 'indispo';
+  p.planning[k] = on ? 1 : 0; return 'ok';
+}
+export function changerRole(e, id, role) {
+  const p = employe(e, id); if (!p || !PERSONNEL.vitesse[role]) return 'indispo';
+  if (p.gerant && role === 'cuisine') return 'indispo';
+  p.role = role; return 'ok';
+}
+export function changerSalaire(e, id, delta) {
+  const p = employe(e, id); if (!p || p.gerant) return 'indispo';
+  p.salaire = Math.max(PERSONNEL.smic, Math.round((p.salaire + delta) * 100) / 100);
+  if (delta > 0) p.moral = Math.min(1, p.moral + .15 * delta);
+  return 'ok';
+}
+
+// ---------- Capacité du moment ----------
+export const momentIndex = e => { const k = MOMENTS.findIndex(m => e.horloge >= m.de && e.horloge < m.a); return k < 0 ? MOMENTS.length - 1 : k; };
+export const momentActuel = e => !ouvert(e) ? { nom: 'Nuit' } : (MOMENTS.find(m => e.horloge >= m.de && e.horloge < m.a) || MOMENTS[MOMENTS.length - 1]);
+export const avanceeJournee = e => Math.max(0, Math.min(1, (e.horloge - HORAIRES.ouverture) / (HORAIRES.fermeture - HORAIRES.ouverture)));
+export const partEmporter = e => a(e, 'emporter') ? CAPACITE.emporterGuichet : CAPACITE.emporter;
+export function capacites(e, k = momentIndex(e)) {
+  const presents = e.equipe.filter(p => presentA(p, k));
+  const baristas = presents.filter(p => p.role === 'barista').map(vitesseEmploye).sort((x, y) => y - x);
+  const salle = presents.filter(p => p.role === 'salle').reduce((s, p) => s + vitesseEmploye(p), 0);
+  const cuisine = presents.filter(p => p.role === 'cuisine').reduce((s, p) => s + vitesseEmploye(p), 0);
+  const caps = e.st[2].panne ? [] : machinesInstallees(e).map(m => m.vitesse * CAPACITE.machine).sort((x, y) => y - x);
+  let boissons = 0;
+  for (let i = 0; i < Math.min(baristas.length, caps.length); i++) boissons += Math.min(baristas[i], caps[i]);
+  if (salle <= 0) boissons *= PERSONNEL.sansSalle;
+  const moulin = e.st[1].panne ? 0 : MO[e.moulin].vitesse * CAPACITE.moulin;
+  const placesH = places(e) * CAPACITE.placesParHeure / (1 - partEmporter(e));
+  return { boissons, moulin, salle: salle > 0 ? salle : Infinity, places: placesH, cuisine, baristas: baristas.length, enSalle: presents.filter(p => p.role === 'salle').length, presents: presents.length };
+}
+
+// ---------- Qualité, prix, demande ----------
+export function qualiteEquipement(e) {
+  const gouts = e.machines.map((id, p) => id ? M[id].qualite * (1 - CALCAIRE.gout * (e.calcaire?.[p] || 0)) : null).filter(x => x != null);
+  const machine = gouts.length ? gouts.reduce((s, q) => s + q, 0) / gouts.length : .8;
+  return machine * MO[e.moulin].qualite * F[e.fournisseur].qualite;
+}
+export const fraicheur = (e, g) => Math.max(FRAICHEUR.min, 1 - FRAICHEUR.perte * Math.max(0, (e.age?.[g] || 0) - FRAICHEUR.jours));
+export function ajouterStock(e, g, doses) {
+  const s = Math.max(0, e.stock[g]);
+  e.age[g] = s + doses > 0 ? (e.age[g] || 0) * s / (s + doses) : 0;
+  e.stock[g] = s + doses;
+}
+function savoirFaire(e) {
+  const b = e.equipe.filter(p => p.role === 'barista' && presentA(p, momentIndex(e)));
+  if (!b.length) return 1;
+  return b.reduce((s, p) => s + 1 + .03 * (p.comp - 2) + (p.trait === 'perfectionniste' ? .04 : 0), 0) / b.length;
+}
+export const consoParTasse = e => (e.dosage || DOSAGE.reference) / DOSAGE.reference;
+export function facteurDosage(e) {
+  const d = e.dosage || DOSAGE.reference, Tb = DOSAGE.gout;
+  if (d <= Tb[0][0]) return Tb[0][1];
+  for (let k = 1; k < Tb.length; k++) if (d <= Tb[k][0]) return Tb[k - 1][1] + (Tb[k][1] - Tb[k - 1][1]) * (d - Tb[k - 1][0]) / (Tb[k][0] - Tb[k - 1][0]);
+  return Tb[Tb.length - 1][1];
+}
+export function reglerDosage(e, g) { e.dosage = Math.round(Math.max(DOSAGE.min, Math.min(DOSAGE.max, g)) / DOSAGE.pas) * DOSAGE.pas; return 'ok'; }
+export const qualite = e => G[e.maison].q * qualiteEquipement(e) * fraicheur(e, e.maison) * facteurDosage(e) * savoirFaire(e);
+export const prixJuste = e => (1.3 + .42 * qualite(e)) * villeInfo(e).prix;
+export const coutTasse = e => G[e.maison].prixSac * F[e.fournisseur].prixMult * consoParTasse(e) / DOSES_SAC;
+export const prixEffectif = e => e.prix * (ouvert(e) ? (e.tarifs?.[momentIndex(e)] ?? 1) : 1);
+export function reglerPrix(e, p) { e.prix = Math.round(Math.max(.8, Math.min(9, p)) * 20) / 20; }
+export function reglerTarif(e, m, v) {
+  if (m < 0 || m >= MOMENTS.length) return 'indispo';
+  e.tarifs[m] = Math.round(Math.round(Math.max(TARIFS.min, Math.min(TARIFS.max, v)) / TARIFS.pas) * TARIFS.pas * 100) / 100;
+  return 'ok';
+}
+export function facteurPrix(e) { const r = prixEffectif(e) / prixJuste(e); return r <= 1 ? 1 + .3 * (1 - r) : Math.exp(-2.5 * (r - 1)); }
+const multEvts = e => e.evts.reduce((m, v) => m * (v.demande ?? 1), 1);
+const multPrixEvts = e => e.evts.reduce((m, v) => m * (v.prix || 1), 1);
+export function courbeHeure(h) {
+  if (h <= COURBE_HEURE[0][0]) return COURBE_HEURE[0][1];
+  for (let k = 1; k < COURBE_HEURE.length; k++) {
+    const [h1, v1] = COURBE_HEURE[k], [h0, v0] = COURBE_HEURE[k - 1];
+    if (h <= h1) return v0 + (v1 - v0) * (h - h0) / (h1 - h0);
+  }
+  return COURBE_HEURE[COURBE_HEURE.length - 1][1];
+}
+export const attrait = e => (a(e, 'enseigne') ? 1.12 : 1) * (a(e, 'ardoise') ? 1.04 : 1) * (a(e, 'emporter') ? 1.1 : 1) * (a(e, 'velo') ? 1.12 : 1)
+  * (a(e, 'etage') ? 1.2 : 1) * (a(e, 'jukebox') ? 1.05 : 1) * (harmonie(e) ? 1.04 : 1);
+// ---------- Météo, saison et boisson du jour ----------
+export const meteoDuJour = e => MET[e.meteo] || MET.nuages;
+export function multMeteo(e) {
+  const m = meteoDuJour(e), s = saison(e);
+  const terr = a(e, 'terrasse') ? (a(e, 'chauffages') && m.terrasse < 1 ? 1 - (1 - m.terrasse) / 2 : m.terrasse) * (villeInfo(e).terrasse || 1) * s.terrasse * 1.25 : 1;
+  return m.demande * terr * (m.id === 'froid' && a(e, 'cheminee') ? 1.3 : 1) * (m.id === 'chaleur' && a(e, 'clim') ? 1.25 : 1);
+}
+export const effetBoisson = (id, meteo) => { const b = BO[id] || BO.aucune; return id === 'aucune' ? 0 : (b.bonus[meteo] || 0) - b.cout; };
+export const multBoisson = e => 1 + effetBoisson(e.boisson, e.meteo);
+export function tirerMeteo(rnd, e = null) {
+  const poids = m => { if (!e) return m.poids; const v = villeInfo(e).meteo?.[m.id]; const s = saison(e).meteo[m.id]; return (v ?? m.poids) * (s ?? 1) / 3; };
+  const total = METEOS.reduce((s, m) => s + poids(m), 0); let x = rnd() * total;
+  for (const m of METEOS) { if ((x -= poids(m)) <= 0) return m.id; }
+  return METEOS[METEOS.length - 1].id;
+}
+export function choisirBoisson(e, id) {
+  const b = BO[id]; if (!b) return 'indispo';
+  if (e.rep < b.rep) return 'verrou';
+  if (ouvert(e)) return 'ferme';
+  e.boisson = id; return 'ok';
+}
+export const pleut = e => e.evts.some(v => v.id === 'pluie') || (ouvert(e) && e.meteo === 'pluie');
+export const neige = e => e.meteo === 'froid';
+// ---------- Formules par moment ----------
+export const formuleOuverte = (e, f) => (f.req || []).every(r => a(e, r)) && e.rep >= (f.rep || 0);
+export function formuleDuMoment(e) {
+  if (!ouvert(e)) return null;
+  const k = momentIndex(e), f = FORMULES.find(x => x.moment === k && e.formules?.[x.id] && formuleOuverte(e, x));
+  if (!f) return null;
+  if (f.id !== 'petitdej' && capacites(e, k).cuisine <= 0) return null;
+  return f;
+}
+export function reglerFormule(e, id, actif) {
+  const f = FO[id]; if (!f) return 'indispo';
+  if (!formuleOuverte(e, f)) return 'verrou';
+  if (ouvert(e)) return 'ferme';
+  e.formules[id] = !!actif; return 'ok';
+}
+const multFormulePanier = e => { const f = formuleDuMoment(e); return f ? 1 + f.panier - f.cout : 1; };
+export const panier = e => TICKET * prixEffectif(e) * multPrixEvts(e) * (ouvert(e) ? multBoisson(e) * multFormulePanier(e) : 1) * (a(e, 'boutique') ? 1.12 : 1) * (menuLait(e) ? 1 + LAIT.part * LAIT.bonus : 1);
+export const prixCappuccino = e => prixEffectif(e) * (1 + LAIT.bonus);
+export function demandeParHeure(e) {
+  if (!ouvert(e)) return 0;
+  const f = formuleDuMoment(e);
+  return DEMANDE_BASE * e.notoriete * (.4 + e.rep * .2) * attrait(e) * courbeHeure(e.horloge) * AFFLUENCE_JOUR[jourSemaine(e)] * saison(e).demande
+    * multMeteo(e) * facteurPrix(e) * (1 + (f?.demande || 0)) * multEvts(e) * (villeInfo(e).demande || 1);
+}
+export const demande = e => demandeParHeure(e) / SPH;
+export function bilan(e) {
+  if (!ouvert(e)) return { ventes: 0, chaine: 0, demande: 0, goulot: { type: 'ferme', nom: 'le café est fermé (journal du soir)' }, parSeconde: 0, cap: null };
+  const c = capacites(e), dem = demandeParHeure(e);
+  const limites = [
+    [c.boissons, { type: 'station', i: 2, nom: c.baristas ? (c.baristas < nbMachines(e) ? 'les baristas (une machine attend quelqu’un)' : 'les machines du bar') : 'personne au bar !', cause: 'bar' }],
+    [c.moulin, { type: 'station', i: 1, nom: 'le moulin', cause: 'moulin' }],
+    [c.salle, { type: 'station', i: 3, nom: 'le service en salle', cause: 'salle' }],
+    [c.places, { type: 'station', i: 3, nom: 'les places assises', cause: 'places' }],
+  ];
+  let [chaine, goulot] = limites.reduce((m, l) => l[0] < m[0] ? l : m, [Infinity, null]);
+  let ventes = Math.min(chaine, dem);
+  if (dem < chaine) goulot = { type: 'clients', nom: 'les clients (heure, prix, note, notoriété)' };
+  if (e.stock[e.maison] <= 0) { ventes = 0; goulot = { type: 'stock', nom: 'la réserve : plus de grain !' }; }
+  return { ventes: ventes / SPH, chaine: chaine / SPH, demande: dem / SPH, goulot, parSeconde: ventes / SPH * panier(e), cap: c, parHeure: { ventes, chaine, demande: dem } };
+}
+export const debitMax = () => 1;
+export function debitStation(e, i) {
+  const s = e.st[i]; if (s.panne || !ouvert(e)) return 0;
+  const k = momentIndex(e), pres = e.equipe.filter(p => presentA(p, k));
+  if (i === 2) return pres.some(p => p.role === 'barista') ? 1 : .15;
+  if (i === 3) return pres.some(p => p.role === 'salle') ? 1 : .5;
+  return 1;
+}
+
+// ---------- La note : la moyenne des avis des clients ----------
+function partsSatisfaction(e, b) {
+  const gout = 1 - Math.exp(-qualite(e) / 2.5);
+  const attente = b.demande > 0 ? Math.min(1, b.chaine * 1.3 / b.demande) : 1;
+  const r = prixEffectif(e) / prixJuste(e), prix = r <= 1 ? 1 : Math.max(0, 1 - (r - 1) * 2.5);
+  const ambiance = Math.min(1, .35 + bonusDeco(e) * .45 + (harmonie(e) ? .1 : 0));
+  const sourire = e.equipe.some(p => p.trait === 'souriant' && p.role === 'salle' && presentA(p, momentIndex(e))) ? .15 : 0;
+  return { gout, attente, prix, ambiance, sourire };
+}
+export function satisfaction(e, b = bilan(e)) {
+  const p = partsSatisfaction(e, b);
+  return Math.max(1, Math.min(5, 1 + 4 * (.45 * p.gout + .25 * p.attente + .15 * p.prix + .15 * p.ambiance) + p.sourire));
+}
+export function cibleReputation(e) {
+  const b = ouvert(e) ? bilan(e) : { demande: 1, chaine: 1 };
+  const p = partsSatisfaction(e, b);
+  return { total: satisfaction(e, b), parts: { gout: 4 * .45 * p.gout, service: 4 * .25 * p.attente + p.sourire, prix: 4 * .15 * p.prix, deco: 4 * .15 * p.ambiance, base: 1 } };
+}
+
+// ---------- Réserve et commandes (en kilos) ----------
+export const capaciteReserve = e => (RESERVE_KG.base + (a(e, 'palette') ? RESERVE_KG.palette : 0) + (a(e, 'arriere') ? RESERVE_KG.arriere : 0) + (a(e, 'entrepot') ? RESERVE_KG.entrepot : 0)) * DOSES_SAC;
+const grainsCommandes = e => e.commandes.concat(e.livraisonsMatin).filter(c => c.grain !== 'lait').reduce((x, c) => x + c.sacs * DOSES_SAC, 0);
+export const totalStock = e => Object.values(e.stock).reduce((x, y) => x + y, 0) + grainsCommandes(e);
+export const prixKg = (e, g) => G[g].prixSac * F[e.fournisseur].prixMult;
+export function commander(e, grain, kg, auto = false) {
+  if (!e.debloques.includes(grain)) return 'verrou';
+  if (ouvert(e)) return 'ferme';
+  kg = Math.round(kg);
+  if (kg < 1) return 'indispo';
+  const prix = prixKg(e, grain) * kg;
+  if (totalStock(e) + kg * DOSES_SAC > capaciteReserve(e) + 1e-6) return 'place';
+  if (e.argent < prix && !auto) return 'argent';
+  depenser(e, prix); if (!auto) e.stats.commandes++;
+  e.livraisonsMatin.push({ grain, sacs: kg });
+  return 'ok';
+}
+export function commanderUrgence(e, grain, kg) {
+  if (!e.debloques.includes(grain)) return 'verrou';
+  if (!ouvert(e)) return commander(e, grain, kg);
+  const prix = G[grain].prixSac * URGENCE.mult * kg;
+  if (e.argent < prix) return 'argent';
+  if (totalStock(e) + kg * DOSES_SAC > capaciteReserve(e) + 1e-6) return 'place';
+  depenser(e, prix); e.stats.commandes++;
+  e.commandes.push({ grain, sacs: kg, eta: URGENCE.delai });
+  return 'ok';
+}
+export function commanderLait(e, litres) {
+  if (!aBuse(e)) return 'verrou';
+  const urgence = ouvert(e), prix = LAIT.prixPack * litres * (urgence ? URGENCE.mult : 1);
+  if (e.argent < prix) return 'argent';
+  depenser(e, prix); e.stats.commandes++;
+  if (urgence) e.commandes.push({ grain: 'lait', sacs: litres, eta: URGENCE.delai });
+  else e.livraisonsMatin.push({ grain: 'lait', sacs: litres });
+  return 'ok';
+}
+export function remplir(e, grain, auto = false, maxKg = Infinity) {
+  if (ouvert(e)) return 'ferme';
+  const place = Math.floor((capaciteReserve(e) - totalStock(e)) / DOSES_SAC + 1e-6);
+  if (place < 1) return 'place';
+  const n = Math.min(place, Math.floor(e.argent / prixKg(e, grain)), maxKg);
+  if (n < 1) return 'argent';
+  return commander(e, grain, n, auto) === 'ok' ? n : 'argent';
+}
+export function reglerAbonnement(e, grain, kg) {
+  if (grain && !e.debloques.includes(grain)) return 'verrou';
+  e.abonnement = { grain: grain || null, kg: Math.max(0, Math.min(100, Math.round(kg || 0))) };
+  return 'ok';
+}
+export function commanderViennoiseries(e, n) {
+  if (!a(e, 'vitrine')) return 'verrou';
+  e.viennoiseries.commande = Math.max(0, Math.min(400, Math.round(n))); return 'ok';
+}
+
+// ---------- Catalogue et travaux (le soir) ----------
+export function acheter(e, id) {
+  const t = T[id];
+  if (!t || !disponible(e, t)) return 'indispo';
+  if (ouvert(e)) return 'ferme';
+  const p = prixTravaux(e, t);
+  if (e.argent < p) return 'argent';
+  depenser(e, p, 'investissements'); e.achats.push(id); return 'ok';
+}
+export function acheterMachine(e, poste, id) {
+  const m = M[id];
+  if (!m || poste < 0 || poste >= nbPostes(e)) return 'indispo';
+  if (ouvert(e)) return 'ferme';
+  if (e.rep < (m.rep || 0)) return 'verrou';
+  if (e.machines[poste] === id) return 'deja';
+  const reprise = e.machines[poste] ? M[e.machines[poste]].prix * .25 : 0;
+  if (e.argent + reprise < m.prix) return 'argent';
+  depenser(e, m.prix - reprise, 'investissements'); e.machines[poste] = id; e.calcaire[poste] = 0; return 'ok';
+}
+export function acheterMoulin(e, id) {
+  const m = MO[id];
+  if (!m) return 'indispo';
+  if (ouvert(e)) return 'ferme';
+  if (e.rep < (m.rep || 0)) return 'verrou';
+  if (e.moulin === id) return 'deja';
+  const reprise = MO[e.moulin].prix * .25;
+  if (e.argent + reprise < m.prix) return 'argent';
+  depenser(e, m.prix - reprise, 'investissements'); e.moulin = id; return 'ok';
+}
+export function choisirFournisseur(e, id) {
+  const f = F[id];
+  if (!f) return 'indispo';
+  if (e.rep < f.rep) return 'verrou';
+  e.fournisseur = id; return 'ok';
+}
+export function choisirGrain(e, id) { if (!e.debloques.includes(id)) return 'verrou'; e.maison = id; return 'ok'; }
+
+// ---------- Finances : charges, mois, prêts, découvert ----------
+export const energieJour = e => ENERGIE.base + ENERGIE.parMachine * nbMachines(e) + (a(e, 'clim') ? ENERGIE.clim : 0) + (a(e, 'cheminee') ? ENERGIE.cheminee : 0);
+export const loyerMois = e => Math.round((villeInfo(e).loyer || 1) * (MOIS.loyer + (a(e, 'agrandir') ? MOIS.agrandir : 0) + (a(e, 'etage') ? MOIS.etage : 0)) + (a(e, 'terrasse') ? MOIS.terrasse : 0));
+export const entretienMois = e => Math.round(machinesInstallees(e).reduce((s, m) => s + m.prix, 0) * MOIS.entretien + MO[e.moulin].prix * MOIS.entretien);
+export function chargesJour(e) {
+  const salaires = masseSalarialeJour(e), energie = energieJour(e), agios = e.argent < 0 ? -e.argent * DECOUVERT.agios : 0;
+  return { salaires, energie, agios, total: salaires + energie + agios };
+}
+export const mensualite = (montant, taux, mois) => { const t = taux / 12; return Math.round(montant * t / (1 - Math.pow(1 + t, -mois)) * 100) / 100; };
+export function pretAccorde(e, id) {
+  const p = PR[id]; if (!p) return false;
+  if (e.pret) return false;
+  if (id === 'petit') return true;
+  const ca7 = e.bilans.slice(-7).reduce((s, b) => s + b.recettes, 0);
+  return ca7 * 4 >= mensualite(p.montant, p.taux, p.mois) * 6;
+}
+export function emprunter(e, id) {
+  const p = PR[id]; if (!p) return 'indispo';
+  if (e.pret) return 'deja';
+  if (!pretAccorde(e, id)) return 'refus';
+  e.argent += p.montant;
+  e.pret = { id, montant: p.montant, taux: p.taux, mois: p.mois, restant: p.mois, capital: p.montant, mensualite: mensualite(p.montant, p.taux, p.mois) };
+  return 'ok';
+}
+function finDuMois(e, arrivees) {
+  const m = e.mois, loyer = loyerMois(e), entretien = entretienMois(e);
+  e.argent -= loyer + MOIS.assurance + entretien; m.loyer += loyer + MOIS.assurance; m.entretien += entretien;
+  if (e.pret) {
+    const interets = e.pret.capital * e.pret.taux / 12, capital = e.pret.mensualite - interets;
+    e.argent -= e.pret.mensualite; m.interets += interets; m.remboursement = capital; e.pret.capital = Math.max(0, e.pret.capital - capital); e.pret.restant--;
+    if (e.pret.restant <= 0) { e.pret = null; e.stats.pretsRembourses++; arrivees.push({ pretRembourse: true }); }
+  }
+  const avantImpot = m.ca - m.achats - m.salaires - m.loyer - m.energie - m.entretien - m.interets;
+  m.impots = avantImpot > 0 ? Math.round(avantImpot * MOIS.impot) : 0; e.argent -= m.impots;
+  m.resultat = avantImpot - m.impots; m.numero = e.historiqueMois.length + 1; m.nom = NOMS_MOIS[(Math.floor((e.jour - 1) / MOIS.jours)) % 12];
+  e.historiqueMois = [...e.historiqueMois.slice(-11), m];
+  e.mois = nouveauMois();
+  arrivees.push({ finMois: m });
+}
+
+// ---------- Pannes et événements ----------
+export function choisirPanne(e, rnd) {
+  const distraits = e.equipe.filter(p => p.trait === 'distrait').length;
+  const bar = machinesInstallees(e).reduce((s, m) => s + 1 / m.fiabilite, 0) * .8 * (1 + .25 * distraits);
+  const poids = [[1, 1 / MO[e.moulin].fiabilite], [2, bar]].filter(([i]) => !e.st[i].panne);
+  if (!poids.length) return null;
+  const total = poids.reduce((s, p) => s + p[1], 0); let x = rnd * total;
+  for (const [i, w] of poids) { if ((x -= w) <= 0) return i; }
+  return poids[poids.length - 1][0];
+}
+export function declencherPanne(e, i) { if (i == null || e.st[i].panne || !ouvert(e)) return false; e.st[i].panne = { coups: 3, auto: 15 }; return true; }
+export const intervallePanne = (e, rnd) => ((machinesInstallees(e).some(m => m.fiabilite < .5) ? 60 : 95) + rnd * 70)
+  * (1 - CALCAIRE.pannes * Math.max(0, ...(e.calcaire || [0])) / (1 + CALCAIRE.pannes));
+export function toucher(e, i) {
+  const s = e.st[i];
+  if (s.panne) {
+    s.panne.coups--;
+    if (s.panne.coups <= 0) { s.panne = null; e.meta.reparations++; return { type: 'repare' }; }
+    return { type: 'reparation', reste: s.panne.coups };
+  }
+  return { type: 'rien' };
+}
+const reparateurPresent = e => e.equipe.some(p => p.role === 'barista' && p.comp >= 3 && presentA(p, momentIndex(e)));
+export const coutDetartrage = (e, p) => Math.round(Math.max(CALCAIRE.min, (e.machines[p] ? M[e.machines[p]].prix : 0) * CALCAIRE.prix));
+export function detartrer(e, p) {
+  if (!e.machines[p]) return 'indispo';
+  if (ouvert(e)) return 'ferme';
+  if ((e.calcaire[p] || 0) <= 0) return 'propre';
+  const c = coutDetartrage(e, p);
+  if (e.argent < c) return 'argent';
+  depenser(e, c, 'entretien'); e.calcaire[p] = 0; return 'ok';
+}
+export function evenementsPossibles(e) { return ['touristes', 'critique', 'pluie'].concat(cafemaxOuvert(e) ? ['cafemax'] : []); }
+export function appliquerEvenement(e, type) {
+  e.evts = e.evts.filter(v => v.id !== type);
+  if (type === 'touristes') { e.evts.push({ id: 'touristes', nom: 'Bus de touristes', demande: 1.8, reste: 40 }); return { type }; }
+  if (type === 'pluie') { const f = a(e, 'terrasse') ? .8 : 1.15; e.evts.push({ id: 'pluie', nom: 'Averse', demande: f, reste: 50 }); return { type, terrasse: a(e, 'terrasse') }; }
+  if (type === 'cafemax') { e.evts.push({ id: 'cafemax', nom: 'Promo CaféMax', demande: .65, reste: 45 }); return { type }; }
+  const r = prixEffectif(e) / prixJuste(e), ok = qualite(e) >= 2.2 && r <= 1.15 && e.stock[e.maison] > 0;
+  e.rep = Math.max(1, Math.min(5, e.rep + (ok ? .25 : -.2))); e.notoriete = Math.min(NOTORIETE.max, e.notoriete + (ok ? .12 : .03));
+  if (ok) e.meta.critiques++;
+  return { type: 'critique', ok };
+}
+
+// ---------- Décisions (cartes à choix) ----------
+const meilleurGrain = e => [...GRAINS].reverse().find(g => e.debloques.includes(g.id));
+const PRIX_MUSICIEN = 120, PRIX_NETTOYAGE = 180, PRIX_EXTRA = 90;
+const meilleurEmploye = e => e.equipe.filter(p => !p.gerant).sort((x, y) => y.comp - x.comp)[0];
+const employeDuJour = e => e.equipe.find(x => !x.gerant && heuresPlanifiees(x) > 0);
+const CARTES = {
+  groupe: {
+    ok: () => true,
+    carte: () => ({ texte: 'Un guide appelle : un groupe de 15 touristes voudrait venir dans l’heure. Ça va bousculer le service…', options: ['Accepter', 'Refuser'] }),
+    choix: (e, k) => {
+      if (k === 0) { e.evts = e.evts.filter(v => v.id !== 'groupe'); e.evts.push({ id: 'groupe', nom: 'Groupe de touristes', demande: 2, reste: 45 }); return 'Le groupe arrive : deux fois plus de monde pendant une heure et demie. L’équipe va devoir suivre !'; }
+      return 'Tu as poliment refusé le groupe.';
+    },
+  },
+  lot: {
+    ok: e => e.argent >= meilleurGrain(e).prixSac * 3 && totalStock(e) + 5 * DOSES_SAC <= capaciteReserve(e),
+    carte: e => { const g = meilleurGrain(e); return { texte: `Un torréfacteur propose 5 kg de ${g.nom} à −40 %, tout de suite (${Math.round(g.prixSac * 5 * .6)} €).`, options: ['Acheter', 'Non merci'] }; },
+    choix: (e, k) => {
+      if (k !== 0) return 'Tu as laissé passer l’affaire.';
+      const g = meilleurGrain(e), prix = g.prixSac * 5 * .6;
+      if (e.argent < prix) return 'Plus assez d’argent : l’affaire tombe à l’eau.';
+      depenser(e, prix); ajouterStock(e, g.id, 5 * DOSES_SAC); return `5 kg de ${g.nom} rangés dans la réserve.`;
+    },
+  },
+  etudiants: {
+    ok: e => !e.evts.some(v => v.id === 'etudiants'),
+    carte: () => ({ texte: 'Inès demande une réduction de 10 % pour les étudiants. Ils viendront plus nombreux…', options: ['D’accord', 'Non'] }),
+    choix: (e, k) => {
+      if (k === 0) { e.evts.push({ id: 'etudiants', nom: 'Réduction étudiante', demande: 1.2, prix: .9, reste: 360 }); return 'Les étudiants affluent : +20 % de clients, −10 % sur le prix, pendant une journée.'; }
+      return 'Inès est un peu déçue.';
+    },
+  },
+  musicien: {
+    ok: e => e.horloge < 17,
+    carte: () => ({ texte: `Un musicien propose de jouer cet après-midi pour ${PRIX_MUSICIEN} €. L’ambiance attire du monde.`, options: ['Payer', 'Non merci'] }),
+    choix: (e, k) => {
+      if (k !== 0) return 'Le musicien ira jouer chez CaféMax…';
+      if (e.argent < PRIX_MUSICIEN) return 'Pas assez d’argent pour le musicien.';
+      depenser(e, PRIX_MUSICIEN); e.evts.push({ id: 'musique', nom: 'Musicien', demande: 1.35, reste: 90 }); return 'Musique ! +35 % de clients pendant 3 heures.';
+    },
+  },
+  hygiene: {
+    ok: () => true,
+    carte: () => ({ texte: `Contrôle d’hygiène surprise ! Payer un nettoyage express (${PRIX_NETTOYAGE} €), ou fermer une heure pour tout nettoyer ?`, options: ['Payer', 'Fermer 1 h'] }),
+    choix: (e, k) => {
+      if (k === 0 && e.argent >= PRIX_NETTOYAGE) { depenser(e, PRIX_NETTOYAGE, 'entretien'); return 'Le nettoyage express est fait. Inspecteur satisfait.'; }
+      e.evts.push({ id: 'nettoyage', nom: 'Fermé pour nettoyage', demande: 0, reste: 30 }); return 'Le café ferme une heure pour le grand ménage.';
+    },
+  },
+  debauche: {
+    ok: e => !!meilleurEmploye(e) && meilleurEmploye(e).comp >= 3,
+    carte: e => ({ texte: `CaféMax veut débaucher ${meilleurEmploye(e).nom} ! L’augmenter de 2 €/h pour la ou le garder ?`, options: ['Augmenter', 'Laisser partir'] }),
+    choix: (e, k) => {
+      const p = meilleurEmploye(e); if (!p) return 'Fausse alerte.';
+      if (k === 0) { changerSalaire(e, p.id, 2); return `${p.nom} reste, ravi·e de son augmentation.`; }
+      e.equipe = e.equipe.filter(x => x.id !== p.id); return `${p.nom} est parti·e chez CaféMax. Il faudra recruter.`;
+    },
+  },
+  occasion: {
+    ok: e => !e.machines.includes('maestro') && e.argent >= M.maestro.prix / 2,
+    carte: () => ({ texte: `Un café qui ferme revend sa Maestro Pro à moitié prix (${M.maestro.prix / 2} €). Elle remplacerait ta machine la plus lente.`, options: ['Acheter', 'Non merci'] }),
+    choix: (e, k) => {
+      if (k !== 0) return 'Tu laisses passer la Maestro Pro.';
+      if (e.argent < M.maestro.prix / 2) return 'Plus assez d’argent.';
+      let poste = e.machines.findIndex((id, p) => !id && p < nbPostes(e));
+      if (poste < 0) poste = e.machines.reduce((best, id, p) => (p < nbPostes(e) && id && (best < 0 || M[id].vitesse < M[e.machines[best]].vitesse)) ? p : best, -1);
+      depenser(e, M.maestro.prix / 2, 'investissements'); e.machines[poste] = 'maestro'; e.calcaire[poste] = 0; return 'La Maestro Pro est installée !';
+    },
+  },
+  malade: {
+    ok: e => !!employeDuJour(e),
+    carte: e => ({ texte: `${employeDuJour(e).nom} appelle : malade, pas de travail cet après-midi. Appeler un extra d’agence (${PRIX_EXTRA} €) ?`, options: ['Appeler l’agence', 'On fera sans'] }),
+    choix: (e, k) => {
+      const p = employeDuJour(e); if (!p) return 'Fausse alerte.';
+      if (k === 0 && e.argent >= PRIX_EXTRA) { depenser(e, PRIX_EXTRA, 'salaires'); return 'Un extra arrive en renfort pour l’après-midi.'; }
+      p.planning = p.planning.map((v, i) => i >= 2 ? 0 : v); return `${p.nom} est absent·e cet après-midi : l’équipe fera sans.`;
+    },
+  },
+};
+function planifierDecisions(e, rnd) { e.decisionsDuJour = [8 + rnd() * 4, 13 + rnd() * 4].map(h => ({ heure: h })); }
+function proposerDecision(e, rnd) {
+  const possibles = Object.keys(CARTES).filter(id => CARTES[id].ok(e));
+  if (!possibles.length) return null;
+  const id = possibles[Math.min(possibles.length - 1, Math.floor(rnd() * possibles.length))];
+  e.decision = { id, ...CARTES[id].carte(e), reste: DUREE_DECISION };
+  return e.decision;
+}
+export function choisirDecision(e, k) {
+  const d = e.decision; if (!d) return null;
+  e.decision = null;
+  return CARTES[d.id].choix(e, k);
+}
+export const decisionsConnues = () => Object.keys(CARTES);
+
+// ---------- Avis clients : trois avis chaque soir, tirés de la journée ----------
+export function genererAvis(e, b, rnd = Math.random) {
+  const r = prixEffectif({ ...e, phase: 'service', horloge: 9 }) / prixJuste(e), g = 1 - Math.exp(-qualite(e) / 2.5);
+  const rupture = (b.moments || []).reduce((s, m) => s + (m.stock || 0), 0), boisson = BO[e.boisson], effetB = effetBoisson(e.boisson, e.meteo);
+  const perdus = b.perdus || 0, servis = b.tasses || 0;
+  const sujets = [];
+  if (g > .7) sujets.push([g, 5, 'Un café incroyable, on sent la qualité du grain.']); else if (g < .35) sujets.push([1 - g, 2, 'Café plat et amer… le grain mériterait mieux.']); else sujets.push([.3, 4, 'Un bon petit café, sans chichis.']);
+  if (perdus > servis * .25) sujets.push([1.2, 2, 'Trop de monde, pas assez de personnel : j’ai renoncé.']); else if (perdus < servis * .03) sujets.push([.5, 5, 'Service rapide et souriant !']);
+  if (r > 1.12) sujets.push([r - .6, 2, 'Bon, mais bien trop cher pour ce que c’est.']); else if (r < .85) sujets.push([.6, 5, 'Pas cher du tout, j’adore !']);
+  if (rupture > 20) sujets.push([1.4, 1, 'Plus de café… dans un café ! On est repartis.']);
+  if (fraicheur(e, e.maison) < .9) sujets.push([1, 2, 'Le café avait un petit goût de rassis.']);
+  if (Math.max(...e.calcaire) > .6) sujets.push([.9, 3, 'Un drôle d’arrière-goût de calcaire, non ?']);
+  if (e.boisson !== 'aucune' && effetB > .05) sujets.push([.8, 5, `Le ${boisson.nom.toLowerCase()} du jour tombait à pic avec ce temps !`]);
+  else if (e.boisson !== 'aucune' && effetB < -.02) sujets.push([.7, 3, `Un ${boisson.nom.toLowerCase()} par ce temps ? Drôle d’idée.`]);
+  if (harmonie(e)) sujets.push([.55, 5, 'Quelle jolie salle, tout va bien ensemble.']); else if (bonusDeco(e) < .3) sujets.push([.45, 3, 'La salle est un peu tristounette.']);
+  if (e.dosage >= 10) sujets.push([.5, 5, 'Un café bien corsé, comme je l’aime.']); else if (e.dosage <= 7) sujets.push([.6, 2, 'Le café manque de corps, on dirait de l’eau.']);
+  if ((b.invendus || 0) === 0 && (b.viennoiseries || 0) > 0 && a(e, 'vitrine') && e.viennoiseries.commande > 0) sujets.push([.4, 3, 'Plus un seul croissant à 10 h…']);
+  if (e.meteo === 'froid' && a(e, 'cheminee')) sujets.push([.7, 5, 'Se réchauffer près de la cheminée, le bonheur.']);
+  sujets.sort((x, y) => y[0] - x[0]);
+  return sujets.slice(0, 3).map(([, etoiles, texte], k) => ({ nom: PRENOMS_AVIS[Math.floor(rnd() * PRENOMS_AVIS.length) % PRENOMS_AVIS.length], etoiles: Math.max(1, Math.min(5, etoiles + (k === 2 && rnd() < .3 ? -1 : 0))), texte }));
+}
+
+// ---------- Défi du jour ----------
+export function tirerDefi(e, rnd = Math.random) {
+  const hier = e.bilans.at(-1);
+  if (!hier || e.jour < DEFIS.depuis) return null;
+  const prime = Math.max(20, Math.round(hier.recettes * .06));
+  const n = x => Math.round(x).toLocaleString('fr-FR');
+  const types = [
+    { id: 'tasses', cible: Math.ceil(hier.tasses * 1.12), texte: c => `Servir ${n(c)} clients aujourd’hui` },
+    { id: 'matin', cible: Math.ceil((hier.moments?.[0]?.ventes || hier.tasses * .3) * 1.15), texte: c => `Servir ${n(c)} clients avant 11 h` },
+    { id: 'sansRupture', cible: 1, texte: () => 'Ne jamais tomber à court de grain' },
+    { id: 'benefice', cible: Math.ceil(Math.max(30, hier.benefice * 1.1)), texte: c => `Faire plus de ${n(c)} € de bénéfice` },
+  ];
+  const t = types[Math.min(types.length - 1, Math.floor(rnd() * types.length))];
+  return { id: t.id, cible: t.cible, texte: t.texte(t.cible), progres: 0, prime, fini: false, rate: false };
+}
+
+// ---------- La journée et la nuit ----------
+function fermer(e, rnd = Math.random) {
+  const arrivees = [];
+  const c = chargesJour(e);
+  e.argent -= c.total; e.journee.charges = c.total; e.mois.salaires += c.salaires; e.mois.energie += c.energie; e.mois.interets += c.agios;
+  e.journee.invendus = e.viennoiseries.stock; e.viennoiseries.stock = 0;
+  const b = { jour: e.jour, date: dateTexte(e), recettes: e.journee.recettes, depenses: e.journee.depenses, charges: c.total, tasses: e.journee.tasses,
+    clients: e.journee.clients, perdus: e.journee.perdus, viennoiseries: e.journee.viennoiseries, invendus: e.journee.invendus,
+    satisfaction: e.journee.clients > 0 ? e.journee.satisfaction / e.journee.clients : null,
+    benefice: e.journee.recettes - e.journee.depenses - c.total, detail: c, moments: e.journee.moments, heures: e.journee.heures };
+  if (e.defi && !e.defi.fini && !e.defi.rate) {
+    const d = e.defi, ok = d.id === 'benefice' ? b.benefice >= d.cible : d.id === 'sansRupture';
+    if (ok) { d.fini = true; e.argent += d.prime; } else d.rate = true;
+  }
+  if (e.defi) b.defi = { texte: e.defi.texte, reussi: e.defi.fini, prime: e.defi.prime };
+  b.avis = genererAvis(e, b, rnd);
+  for (const p of [...e.equipe]) {
+    const h = heuresPlanifiees(p);
+    if (p.formation) { p.comp = Math.min(5, p.comp + (p.trait === 'apprenti' && p.comp < 3 ? 2 : 1)); p.formation = 0; e.stats.formations++; p.fatigue = Math.max(0, p.fatigue - .2); arrivees.push({ formation: p.nom, comp: p.comp }); continue; }
+    p.heuresSemaine = (p.heuresSemaine || 0) + h;
+    if (p.gerant) continue;
+    const endurance = p.trait === 'endurant' ? .6 : 1;
+    p.fatigue = Math.max(0, Math.min(1, p.fatigue + (h > 8 ? (h - 8) * .08 * endurance : h === 0 ? -.4 : -.12)));
+    const bienPaye = p.salaire >= salaireMarche(p.comp) - .01;
+    p.moral = Math.max(0, Math.min(1, p.moral + (p.fatigue < .5 ? .03 : 0) + (bienPaye ? .02 : -.05) - (p.fatigue > .7 ? .08 : 0)));
+    if (p.moral < .15) { e.equipe = e.equipe.filter(x => x.id !== p.id); arrivees.push({ demission: p.nom }); }
+  }
+  GRAINS.forEach(g => { if (e.stock[g.id] > 0) e.age[g.id] = (e.age[g.id] || 0) + (a(e, 'entrepot') ? .5 : 1); else e.age[g.id] = 0; });
+  e.meteoDemain = tirerMeteo(rnd, e);
+  e.machines.forEach((id, p) => { if (id) e.calcaire[p] = Math.min(1, (e.calcaire[p] || 0) + CALCAIRE.parJour / Math.sqrt(M[id].fiabilite)); });
+  e.bilans = [...e.bilans.slice(-13), b];
+  e.phase = 'nuit'; e.horloge = HORAIRES.fermeture; e.nuitReste = 0;
+  e.evts = e.evts.filter(v => v.id === 'etudiants'); e.decision = null; e.decisionsDuJour = [];
+  e.st.forEach(s => { s.panne = null; s.coup = 0; });
+  e.stats.nuits++;
+  if (e.jour % MOIS.jours === 0) finDuMois(e, arrivees);
+  if (e.jour % 7 === 0) genererCandidats(e, rnd);
+  if (e.abonnement.grain && e.abonnement.kg > 0) {
+    const place = Math.floor((capaciteReserve(e) - totalStock(e)) / DOSES_SAC);
+    if (place >= 1) { const r = commander(e, e.abonnement.grain, Math.min(e.abonnement.kg, place), true); if (r !== 'ok') arrivees.push({ abonnementRate: r }); }
+  }
+  if (e.argent < DECOUVERT.faillite) {
+    if (!e.sauvetage) { e.sauvetage = true; e.argent += 10000; arrivees.push({ sauvetage: true }); }
+    else { e.faillite = true; arrivees.push({ faillite: true }); }
+  } else if (e.argent < DECOUVERT.alerte) arrivees.push({ alerteBanque: true });
+  return { bilan: b, arrivees };
+}
+export function ouvrir(e, rnd = Math.random) {
+  if (ouvert(e) || e.faillite) return [];
+  const arrivees = [];
+  for (const c of e.livraisonsMatin) {
+    if (c.grain !== 'lait' && rnd() < F[e.fournisseur].retard) {
+      e.commandes.push({ ...c, eta: 5 * SPH }); arrivees.push({ retard: c });
+    } else {
+      if (c.grain === 'lait') { e.lait += c.sacs * LAIT.doses; e.laitVide = false; } else ajouterStock(e, c.grain, c.sacs * DOSES_SAC);
+      arrivees.push({ livraison: c });
+    }
+  }
+  e.livraisonsMatin = [];
+  e.journee = nouvelleJournee();
+  if (a(e, 'vitrine') && e.viennoiseries.commande > 0) { const n = e.viennoiseries.commande; depenser(e, n * VIENNOISERIES.cout); e.viennoiseries.stock = n; }
+  e.phase = 'service'; e.horloge = HORAIRES.ouverture; e.nuitReste = 0; e.jour++;
+  if (jourSemaine(e) === 0) e.equipe.forEach(p => { p.heuresSemaine = 0; });
+  const prevue = e.meteoDemain || 'nuages'; e.meteo = rnd() < FIABILITE_PREVISION ? prevue : tirerMeteo(rnd, e);
+  if (e.meteo !== prevue) arrivees.push({ surpriseMeteo: { prevue, reelle: e.meteo } });
+  planifierDecisions(e, rnd);
+  e.defi = tirerDefi(e, rnd);
+  arrivees.push({ ouverture: e.jour });
+  return arrivees;
+}
+
+export function tick(e, dt, rnd = Math.random) {
+  const arrivees = [];
+  if (!ouvert(e)) return { ...bilan(e), recette: 0, arrivees };
+  for (const s of e.st) {
+    if (s.panne && reparateurPresent(e)) { s.panne.auto -= dt; if (s.panne.auto <= 0) { s.panne = null; arrivees.push({ reparee: true }); } }
+  }
+  e.evts.forEach(v => v.reste -= dt); e.evts = e.evts.filter(v => v.reste > 0);
+  e.commandes.forEach(c => c.eta -= dt);
+  e.commandes = e.commandes.filter(c => {
+    if (c.eta > 0) return true;
+    if (c.grain === 'lait') { e.lait += c.sacs * LAIT.doses; e.laitVide = false; } else ajouterStock(e, c.grain, c.sacs * DOSES_SAC);
+    arrivees.push({ livraison: c }); return false;
+  });
+  if (e.stock[e.maison] <= 0) { const autre = [...GRAINS].reverse().find(g => e.stock[g.id] > 0); if (autre) { e.maison = autre.id; arrivees.push({ repli: autre.id }); } }
+
+  const b = bilan(e), k = consoParTasse(e);
+  const ventes = Math.min(b.ventes * dt, e.stock[e.maison] / k);
+  const perdus = Math.max(0, b.demande * dt - ventes);
+  e.stock[e.maison] = Math.max(0, e.stock[e.maison] - ventes * k);
+  if (menuLait(e)) {
+    e.lait = Math.max(0, e.lait - ventes * LAIT.part);
+    if (e.lait <= 0 && !e.laitVide) { e.laitVide = true; arrivees.push({ plusDeLait: true }); }
+  }
+  let vienno = 0;
+  if (e.viennoiseries.stock > 0) { vienno = Math.min(e.viennoiseries.stock, ventes * VIENNOISERIES.part[momentIndex(e)]); e.viennoiseries.stock -= vienno; }
+  const recette = ventes * panier(e) + vienno * VIENNOISERIES.prix;
+  e.argent += recette; e.meta.totalGagne += recette; e.meta.tasses += ventes; e.meta.clientsTotal += ventes;
+  e.journee.recettes += recette; e.journee.tasses += ventes; e.journee.clients += ventes; e.journee.perdus += perdus; e.journee.viennoiseries += vienno;
+  e.mois.ca += recette; if (ventes > 0) depenser(e, ventes * CONSOMMABLES);
+  const sat = satisfaction(e, b);
+  e.journee.satisfaction += sat * ventes;
+  e.rep += (sat - e.rep) * Math.min(1, ventes * NOTE.poids);
+  e.rep += (NOTE.perdu - e.rep) * Math.min(1, perdus * NOTE.poidsPerdu);
+  e.rep = Math.max(1, Math.min(5, e.rep));
+  e.nbAvis += ventes * .08;
+  e.notoriete = Math.min(NOTORIETE.max, e.notoriete + ventes * NOTORIETE.parClient * Math.max(.2, (e.rep - 2) / 1.5));
+  if (b.demande > 0) e.service += (Math.min(1, b.chaine * 1.3 / b.demande) - e.service) * Math.min(1, dt * .02);
+  const hr = e.journee.heures?.[Math.max(0, Math.min(e.journee.heures.length - 1, Math.floor(e.horloge - HORAIRES.ouverture)))];
+  if (hr) { hr.ventes += ventes; hr.recettes += recette; if (b.goulot.type === 'station') hr.station += dt; else if (b.goulot.type === 'clients') hr.clients += dt; else if (b.goulot.type === 'stock') hr.stock += dt; }
+  const mo = e.journee.moments?.[momentIndex(e)];
+  if (mo) {
+    mo.t += dt; mo.ventes += ventes;
+    if (b.goulot.type === 'station') { mo.station += dt; mo.stations[b.goulot.i] += dt; }
+    else if (b.goulot.type === 'clients') mo.clients += dt; else if (b.goulot.type === 'stock') mo.stock += dt;
+  }
+  if (e.stock[e.maison] <= 0) { if (e.ruptureDepuis === 0) e.rupturesVues++; e.ruptureDepuis += dt; } else e.ruptureDepuis = 0;
+  const d = e.defi;
+  if (d && !d.fini && !d.rate) {
+    if (d.id === 'tasses') d.progres = e.journee.tasses;
+    if (d.id === 'matin') { d.progres = e.journee.moments[0].ventes; if (e.horloge >= MOMENTS[0].a && d.progres < d.cible) d.rate = true; }
+    if (d.id === 'sansRupture' && e.ruptureDepuis > 0) d.rate = true;
+    if ((d.id === 'tasses' || d.id === 'matin') && d.progres >= d.cible) { d.fini = true; e.argent += d.prime; arrivees.push({ defiReussi: d }); }
+    if (d.rate) arrivees.push({ defiRate: d });
+  }
+  for (const g of GRAINS) if (e.rep >= g.rep && !e.debloques.includes(g.id)) { e.debloques.push(g.id); arrivees.push({ debloque: g.id }); }
+  if (e.decision) { e.decision.reste -= dt; if (e.decision.reste <= 0) arrivees.push({ decisionAuto: choisirDecision(e, 1) }); }
+  else if (e.decisionsDuJour.length && e.horloge >= e.decisionsDuJour[0].heure) { e.decisionsDuJour.shift(); const dd = proposerDecision(e, rnd); if (dd) arrivees.push({ decision: dd }); }
+  e.horloge += dt / SPH;
+  if (e.horloge >= HORAIRES.fermeture) { const f = fermer(e, rnd); arrivees.push({ fermeture: f.bilan }, ...f.arrivees); }
+  return { ...b, recette, arrivees };
+}
+
+// ---------- Succès et histoire ----------
+const TESTS_SUCCES = {
+  premierCafe: e => e.meta.tasses >= 1, habitues: e => e.meta.tasses >= 100, milleTasses: e => e.meta.tasses >= 1000, centMille: e => e.meta.tasses >= 1e5,
+  caisse1k: e => e.meta.totalGagne >= 1e4, caisse100k: e => e.meta.totalGagne >= 1e5, caisse10M: e => e.meta.totalGagne >= 1e6,
+  travaux5: e => e.achats.length >= 5, toutNeuf: e => e.achats.length >= TRAVAUX.length, equipe: e => e.equipe.filter(p => !p.gerant).length >= 5,
+  etoiles3: e => e.rep >= 3.5 && e.nbAvis >= 50, etoiles5: e => e.rep >= 4.6 && e.nbAvis >= 300, fineBouche: e => e.maison === 'bourbon' && e.stock.bourbon > 0,
+  reparateur: e => e.meta.reparations >= 10, critique: e => e.meta.critiques >= 1, franchise: e => e.stats.pretsRembourses >= 1,
+  quartier: e => HABITUES.every(h => (e.meta.habitues[h.id] || 0) > 0),
+  geisha: e => e.maison === 'geisha' && e.stock.geisha > 0, atelier5: e => e.stats.formations >= 5,
+  atelierMax: e => e.equipe.some(p => !p.gerant && p.comp >= 5), etage: e => a(e, 'etage'), celeste: e => e.machines.includes('celeste'),
+};
+export function verifierSucces(e) {
+  const nouveaux = SUCCES.filter(s => !e.meta.succes.includes(s.id) && TESTS_SUCCES[s.id]?.(e));
+  nouveaux.forEach(s => e.meta.succes.push(s.id));
+  return nouveaux;
+}
+const TESTS_HISTOIRE = {
+  intro: () => true, premierManager: e => e.equipe.some(p => !p.gerant), premiereRupture: e => e.rupturesVues > 0,
+  etoiles3: e => e.rep >= 3.5 && e.nbAvis >= 50, cloison: e => a(e, 'agrandir'), cafemax: e => e.meta.totalGagne >= 30000,
+  terrasse: e => a(e, 'terrasse'), atelier: e => e.historiqueMois.length >= 1, etage: e => a(e, 'etage'),
+};
+export function verifierHistoire(e) {
+  const h = HISTOIRE.find(m => !e.meta.histoire.includes(m.id) && TESTS_HISTOIRE[m.id]?.(e));
+  if (h) e.meta.histoire.push(h.id);
+  return h || null;
+}
+
+// ---------- Habitués ----------
+export const habituesDisponibles = e => HABITUES.filter(h => e.rep >= h.repMin);
+export function choisirHabitue(e, rnd) {
+  const liste = habituesDisponibles(e);
+  return liste.length ? liste[Math.min(liste.length - 1, Math.floor(rnd * liste.length))] : null;
+}
+export function servirHabitue(e, id) {
+  if (e.stock[e.maison] <= 0 || !ouvert(e)) return 0;
+  const pourboire = 1;
+  e.argent += pourboire; e.meta.totalGagne += pourboire; e.journee.recettes += pourboire; e.mois.ca += pourboire;
+  e.meta.habitues[id] = (e.meta.habitues[id] || 0) + 1;
+  return pourboire;
+}
+
+// ---------- Objectifs de mamie ----------
+const TESTS_OBJECTIFS = {
+  journal: e => e.stats.nuits >= 1, commande: e => e.stats.commandes >= 1 || !!e.abonnement.grain,
+  embauche: e => e.equipe.some(p => !p.gerant && p.role === 'salle'), peinture: e => a(e, 'peinture'),
+  machine: e => machinesInstallees(e).some(m => m.id !== 'occasion'), premierMois: e => e.historiqueMois.some(m => m.resultat > 0),
+  note35: e => e.rep >= 3.5 && e.nbAvis >= 100, equipe3: e => e.equipe.filter(p => !p.gerant).length >= 3,
+  cloison: e => a(e, 'agrandir'), ca15k: e => e.historiqueMois.some(m => m.ca >= 15000), terrasse: e => a(e, 'terrasse'),
+  note45: e => e.rep >= 4.5 && e.nbAvis >= 500, ca40k: e => e.historiqueMois.some(m => m.ca >= 40000),
+};
+export const objectifActuel = e => OBJECTIFS[e.objectif] || null;
+export const primeObjectif = (e, o) => o.prime;
+export function verifierObjectif(e) {
+  const o = objectifActuel(e);
+  if (!o || !TESTS_OBJECTIFS[o.id]?.(e)) return null;
+  e.argent += o.prime; e.objectif++;
+  return { ...o, prime: o.prime };
+}

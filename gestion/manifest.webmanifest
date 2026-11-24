@@ -1,0 +1,17 @@
+{
+  "name": "Le Petit Grain · Gestion",
+  "short_name": "Grain Gestion",
+  "description": "Reprends le café de mamie et gère-le pour de vrai : équipe, planning, stock, comptes et banque.",
+  "lang": "fr",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F6EBDD",
+  "theme_color": "#C8874A",
+  "icons": [
+    { "src": "assets/images/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/images/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

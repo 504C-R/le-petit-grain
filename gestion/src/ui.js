@@ -1,0 +1,680 @@
+// Interface (DOM) — version gestion : en-tête (date, caisse, note, vitesse), étiquettes, panneaux, journal du soir, carnet.
+import * as J from './game.js';
+import { sons, regleSon, regleMusique } from './sons.js';
+import { STATIONS, GRAINS, G, TRAVAUX, T, SUCCES, HISTOIRE, MOTS_TRAVAUX, DOSES_SAC, LAIT, MOMENTS, TARIFS, MURS, SOLS, STYLES, FORMULES,
+  PERSONNEL, ROLES, PRETS, MOIS, DECOUVERT, VIENNOISERIES } from './data.js';
+const heureTexte = h => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.floor((h % 1) * 60)).padStart(2, '0')}`;
+
+export function fmt(n) {
+  const neg = n < 0; n = Math.abs(n);
+  let s;
+  if (n < 100) s = n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+  else if (n < 1e6) s = Math.round(n).toLocaleString('fr-FR') + ' €';
+  else s = (n / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 2 }) + ' M€';
+  return (neg ? '−' : '') + s;
+}
+export const virg = (n, d = 1) => n.toFixed(d).replace('.', ',');
+const kg = doses => virg(doses / DOSES_SAC, doses / DOSES_SAC < 10 ? 1 : 0) + ' kg';
+const $ = id => document.getElementById(id);
+const PANNEAUX = ['fiche', 'p-stock', 'p-prix', 'p-travaux', 'p-carnet'];
+const ICONES_ROLE = { barista: '☕', salle: '🍽️', cuisine: '🥐' };
+const ICONES_MOMENTS = ['🌅', '☀️', '🌤️', '🌇'];
+const COURTS_MOMENTS = ['Matin', 'Midi', 'Aprèm', 'Soir'];
+
+export function creerUI({ jeu, scene }) {
+  const E = () => jeu.e;
+  let ouvert = null, choisie = null, accUI = 0, accPanneau = 0, revenuLisse = 0, toastT = null, argentAffiche = E().argent;
+
+  // ---------- Bulle de mamie et notifications ----------
+  function bulle(texte, { titre = 'Mamie Odette', boutons = [{ label: "D'accord !" }] } = {}) {
+    $('bulle-titre').textContent = titre; $('bulle-txt').textContent = texte;
+    const zone = $('bulle-boutons'); zone.innerHTML = ''; zone.className = 'boutons' + (boutons.length === 1 ? ' un' : '');
+    boutons.forEach(b => {
+      const el = document.createElement('button'); el.className = 'btn ' + (b.cls || ''); el.textContent = b.label;
+      el.onclick = () => { $('bulle').hidden = true; b.fn?.(); };
+      zone.appendChild(el);
+    });
+    $('bulle').hidden = false;
+    sons.bulle();
+  }
+  function toast(html, duree = 4500) {
+    $('toast').innerHTML = html; $('toast').classList.remove('cache');
+    clearTimeout(toastT); toastT = setTimeout(() => $('toast').classList.add('cache'), duree);
+  }
+  function pop(pos, txt, rouge = false) {
+    const [x, y] = scene.projeter(pos);
+    const el = document.createElement('div'); el.className = 'pop' + (rouge ? ' rouge' : ''); el.textContent = txt;
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+    $('labels').appendChild(el); setTimeout(() => el.remove(), 1300);
+  }
+  function parole(pos, nom, texte) {
+    const [x, y] = scene.projeter(pos);
+    const el = document.createElement('div'); el.className = 'parole';
+    el.innerHTML = '<b></b><span></span>'; el.querySelector('b').textContent = nom; el.querySelector('span').textContent = texte;
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+    $('labels').appendChild(el); setTimeout(() => el.remove(), 3600);
+  }
+
+  // ---------- Étiquettes des stations ----------
+  const etiquettes = STATIONS.map((s, i) => {
+    const el = document.createElement('div'); el.className = 'etiq';
+    el.innerHTML = `<span class="auto"></span><span>${s.court}</span><span class="niv"></span>`;
+    el.addEventListener('pointerdown', ev => { ev.stopPropagation(); toucherStation(i); });
+    $('labels').appendChild(el); return el;
+  });
+
+  // ---------- Panneaux ----------
+  function ouvrir(id) { PANNEAUX.forEach(p => { $(p).hidden = p !== id; }); ouvert = id; document.body.classList.add('panneau-ouvert'); }
+  function fermer() { PANNEAUX.forEach(p => { $(p).hidden = true; }); ouvert = null; choisie = null; document.body.classList.remove('panneau-ouvert'); }
+  document.querySelectorAll('[data-fermer]').forEach(b => { b.onclick = fermer; });
+  const basculer = (id, maj) => () => { if (ouvert === id) return fermer(); ouvrir(id); maj(); };
+
+  function toucherStation(i) {
+    const r = J.toucher(E(), i);
+    if (r.type === 'reparation') { pop(scene.ANCRES[i], `Réparation… ${r.reste}`, true); sons.clic(); }
+    if (r.type === 'repare') { pop(scene.ANCRES[i], 'Réparé !'); sons.repare(); }
+    choisie = i; ouvrir('fiche'); majFiche();
+  }
+  // Vitesse du temps : ×1, ×2, ×3, pause
+  $('rush').onclick = () => { const v = [1, 2, 3, 0], k = v.indexOf(jeu.vitesse); jeu.vitesse = v[(k + 1) % v.length]; sons.clic(); majVitesse(); };
+  function majVitesse() {
+    $('rush').firstChild.textContent = jeu.vitesse === 0 ? 'Pause' : 'Vitesse';
+    $('rush-txt').textContent = jeu.vitesse === 0 ? '⏸ arrêté' : '▶'.repeat(jeu.vitesse) + ` ×${jeu.vitesse}`;
+    $('rush').classList.toggle('pause', jeu.vitesse === 0);
+  }
+  $('f-up').onclick = () => { if (choisie === 0) { ouvrir('p-stock'); majStock(); } else ouvrirJournal('equipe'); };
+  $('f-mgr').onclick = () => ouvrirJournal(choisie === 3 ? 'travaux' : choisie === 0 ? 'bilan' : 'catalogue');
+  $('b-stock').onclick = basculer('p-stock', majStock);
+  $('b-prix').onclick = basculer('p-prix', () => { $('x-curseur').value = E().prix; $('x-dose').value = E().dosage; majPrix(); });
+  $('b-travaux').onclick = basculer('p-travaux', majTravaux);
+  $('b-carnet').onclick = basculer('p-carnet', majCarnet);
+  $('x-curseur').oninput = ev => { J.reglerPrix(E(), +ev.target.value); majPrix(); };
+  $('x-dose').oninput = ev => { J.reglerDosage(E(), +ev.target.value); majPrix(); };
+
+  // La fiche d'une station : qui y travaille, ce qu'elle peut faire en une heure, ce qui coince
+  function majFiche() {
+    const i = choisie; if (i == null) return;
+    const e = E(), s = STATIONS[i], st = e.st[i], b = J.bilan(e), k = J.momentIndex(e), c = J.capacites(e, k);
+    const presents = role => e.equipe.filter(p => p.role === role && J.presentA(p, k)).map(p => p.nom).join(', ') || 'personne';
+    $('f-nom').textContent = s.nom;
+    const equip = i === 1 ? J.CATALOGUE_MOULINS[e.moulin].nom : i === 2 ? (J.machinesInstallees(e).map(m => m.nom).join(', ') || 'aucune machine')
+      : i === 3 ? `${J.places(e)} places assises` : `réserve de ${J.capaciteReserve(e) / DOSES_SAC} kg`;
+    $('f-desc').textContent = `Équipement : ${equip}.`;
+    $('f-niv').textContent = i === 2 ? presents('barista') : i === 3 ? presents('salle') : i === 1 ? 'les baristas' : 'toi, le soir';
+    $('f-debit').innerHTML = i === 2 ? `${Math.round(c.boissons)} tasses/h` : i === 1 ? `${Math.round(c.moulin)} tasses/h`
+      : i === 3 ? `${isFinite(c.salle) ? Math.round(c.salle) : '—'} clients/h <em>places : ${Math.round(c.places)}/h</em>` : kg(e.stock[e.maison]);
+    const al = $('f-alerte'); al.className = 'alerte';
+    if (st.panne) al.textContent = `EN PANNE ! Touche la station encore ${st.panne.coups} fois (un barista de niveau 3 ou plus la répare tout seul).`;
+    else if (!J.ouvert(e)) { al.textContent = 'Le café est fermé : prépare demain dans le journal.'; al.className = 'alerte ok'; }
+    else if (b.goulot.type === 'station' && b.goulot.i === i) al.textContent = `C’est ici que ça coince : ${b.goulot.nom}. ${b.goulot.cause === 'places' ? 'Plus de tables, ou une terrasse.' : b.goulot.cause === 'moulin' ? 'Un meilleur moulin.' : b.goulot.cause === 'salle' ? 'Quelqu’un de plus en salle.' : 'Un barista de plus, ou une machine plus rapide.'}`;
+    else { al.textContent = 'Tout roule.'; al.className = 'alerte ok'; }
+    $('f-up').innerHTML = i === 0 ? 'Commander<small>réserve</small>' : 'Équipe<small>planning</small>';
+    $('f-mgr').innerHTML = i === 3 ? 'Travaux<small>tables, terrasse</small>' : i === 0 ? 'Bilan<small>du jour</small>' : 'Catalogue<small>matériel</small>';
+    $('f-up').disabled = false; $('f-mgr').disabled = false;
+  }
+
+  const barres = q => { let h = '<span class="q">'; for (let k = 1; k <= 5; k++) h += `<i class="${q >= k - .25 ? '' : 'v'}"></i>`; return h + '</span>'; };
+  // Une commande urgente couvre environ 2 h de ventes, dans la limite de la place et de la caisse
+  function urgence(grain) {
+    const e = E(), parHeure = (J.bilan(e).parHeure?.ventes || 20) * J.consoParTasse(e);
+    const place = Math.floor((J.capaciteReserve(e) - J.totalStock(e)) / DOSES_SAC + 1e-6), payable = Math.floor(e.argent / (G[grain].prixSac * 2));
+    return Math.max(1, Math.min(Math.ceil(parHeure * 2 / DOSES_SAC), place, payable));
+  }
+  function majStock() {
+    const e = E(), cap = J.capaciteReserve(e), tot = J.totalStock(e), b = J.bilan(e), soir = !J.ouvert(e);
+    $('s-jauge').style.width = Math.min(100, tot / cap * 100) + '%';
+    const parH = (b.parHeure?.ventes || 0) * J.consoParTasse(e), reste = parH > 0 ? e.stock[e.maison] / parH : Infinity;
+    $('s-desc').textContent = `Réserve : ${kg(tot)} / ${cap / DOSES_SAC} kg · ${isFinite(reste) ? `${G[e.maison].nom} épuisé dans ${reste >= 12 ? 'plus d’une journée' : virg(reste) + ' h'}` : soir ? 'commandes du soir livrées demain à 7 h' : 'stock stable'}`;
+    let h = GRAINS.map(g => {
+      if (!e.debloques.includes(g.id)) return `<div class="ligne verrou"><div class="infos"><h4>${g.nom}</h4><p>Qualité ${barres(g.q)} · ${fmt(g.prixSac)}/kg · se débloque à ${virg(g.rep)} ★</p></div></div>`;
+      const enCours = e.commandes.concat(e.livraisonsMatin).filter(c => c.grain === g.id).reduce((x, c) => x + c.sacs, 0), pk = J.prixKg(e, g.id);
+      return `<div class="ligne"><div class="infos"><h4>${g.nom}${e.maison === g.id ? '<span class="tag">servi</span>' : ''}</h4>
+        <p>Qualité ${barres(g.q)} · ${fmt(pk)}/kg · ${kg(e.stock[g.id])}${enCours ? ` (+${enCours} kg en route)` : ''}${e.stock[g.id] > 0 ? ` · <span class="${J.fraicheur(e, g.id) < .9 ? 'rassis' : 'frais'}">fraîcheur ${Math.round(J.fraicheur(e, g.id) * 100)} %</span>` : ''}</p></div>
+        <div class="actions">
+          ${e.maison === g.id ? '' : `<button class="btn mini vert" data-maison="${g.id}">Servir</button>`}
+          ${!soir ? `<button class="btn mini${e.argent < g.prixSac * 2 ? ' off' : ''}" data-cmd="${g.id}">+${urgence(g.id)} kg urgent</button>`
+            : `<button class="btn mini${e.argent < pk ? ' off' : ''}" data-kg="${g.id}:1">+1</button><button class="btn mini${e.argent < pk * 5 ? ' off' : ''}" data-kg="${g.id}:5">+5</button><button class="btn mini${e.argent < pk ? ' off' : ''}" data-remplir="${g.id}">Plein</button>`}
+        </div></div>`;
+    }).join('');
+    // Commande permanente : livrée chaque matin
+    const ab = e.abonnement, abG = ab.grain || e.maison;
+    h += `<div class="ligne"><div class="infos"><h4>Commande permanente${ab.kg ? '<span class="tag">active</span>' : ''}</h4>
+      <p>${ab.kg ? `${ab.kg} kg de ${G[abG].nom} livrés chaque matin (${fmt(ab.kg * J.prixKg(e, abG))}/jour), tant qu’il y a de la place.` : 'Rien de prévu : tu commandes toi-même chaque soir.'}</p></div>
+      <div class="actions"><button class="btn mini${ab.kg <= 0 ? ' off' : ''}" data-abo="${abG}:${ab.kg - 1}">−</button><button class="btn mini vert" data-abo="${e.maison}:${(ab.grain === e.maison ? ab.kg : 0) + 1}">+1 kg</button></div></div>`;
+    // Lait, au litre
+    if (J.aBuse(e)) {
+      const enCours = e.commandes.concat(e.livraisonsMatin).filter(c => c.grain === 'lait').reduce((x, c) => x + c.sacs, 0);
+      h += `<div class="ligne"><div class="infos"><h4>Lait (au frigo)${e.lait <= 0 ? '<span class="tag" style="background:var(--framboise)">vide</span>' : ''}</h4>
+        <p>Pour les cappuccinos · ${fmt(LAIT.prixPack)} le litre (${LAIT.doses} tasses) · reste ${virg(e.lait / LAIT.doses)} L${enCours ? ` (+${enCours} L en route)` : ''}</p></div>
+        <div class="actions"><button class="btn mini${e.argent < LAIT.prixPack * 5 ? ' off' : ''}" data-lait="5">+5 L</button><button class="btn mini${e.argent < LAIT.prixPack * 20 ? ' off' : ''}" data-lait="20">+20 L</button></div></div>`;
+    }
+    // Viennoiseries du lendemain (avec la vitrine)
+    if (J.a(e, 'vitrine')) {
+      const n = e.viennoiseries.commande, hier = e.bilans.at(-1);
+      h += `<div class="ligne"><div class="infos"><h4>Croissants pour demain</h4>
+        <p>${n} commandés (${fmt(n * VIENNOISERIES.cout)}, vendus ${fmt(VIENNOISERIES.prix)} pièce)${hier ? ` · hier : ${Math.round(hier.viennoiseries)} vendus, ${Math.round(hier.invendus)} jetés` : ''}</p></div>
+        <div class="actions"><button class="btn mini${n <= 0 ? ' off' : ''}" data-vienno="${n - 10}">−10</button><button class="btn mini vert" data-vienno="${n + 10}">+10</button></div></div>`;
+    }
+    $('s-liste').innerHTML = h;
+  }
+  $('s-liste').addEventListener('pointerdown', ev => {
+    const b = ev.target.closest('button'); if (!b || b.classList.contains('off')) return;
+    const e = E();
+    if (b.dataset.maison) { J.choisirGrain(e, b.dataset.maison); toast(`On sert maintenant du <b>${G[e.maison].nom}</b>. Pense à ajuster ton prix !`); }
+    if (b.dataset.remplir) {
+      const r = J.remplir(e, b.dataset.remplir);
+      toast(r === 'place' ? 'La réserve est déjà pleine.' : r === 'argent' ? "Pas assez d'argent." : r === 'ferme' ? 'Les commandes normales se passent le soir.' : `Commande passée : <b>${r} kg</b> de ${G[b.dataset.remplir].nom}, livrés demain à 7 h.`);
+    }
+    if (b.dataset.kg) {
+      const [g, n] = b.dataset.kg.split(':'), r = J.commander(e, g, +n);
+      toast(r === 'ok' ? `Commande passée : <b>${n} kg</b> de ${G[g].nom}, livrés demain à 7 h.` : r === 'place' ? 'Plus de place dans la réserve.' : "Pas assez d'argent.");
+      if (r === 'ok') sons.clic();
+    }
+    if (b.dataset.abo) { const [g, n] = b.dataset.abo.split(':'); J.reglerAbonnement(e, +n > 0 ? g : null, +n); sons.clic(); jeu.sauver(); }
+    if (b.dataset.vienno) { J.commanderViennoiseries(e, +b.dataset.vienno); sons.clic(); jeu.sauver(); }
+    if (b.dataset.lait) {
+      const r = J.commanderLait(e, +b.dataset.lait);
+      toast(r === 'ok' ? `Commande passée : <b>${b.dataset.lait} L de lait</b>${J.ouvert(e) ? ' en urgence, livrés dans 1 h' : ', livrés demain à 7 h'}.` : "Pas assez d'argent pour le lait.");
+      if (r === 'ok') sons.clic();
+    }
+    if (b.dataset.cmd) {
+      const n = urgence(b.dataset.cmd), r = J.commanderUrgence(e, b.dataset.cmd, n);
+      toast(r === 'argent' ? "Pas assez d'argent pour cette commande." : r === 'place' ? 'La réserve est pleine.' : `Urgence : <b>${n} kg</b> de ${G[b.dataset.cmd].nom} au prix fort, livrés dans 1 h.`);
+    }
+    majStock();
+  });
+
+  // ---------- Journal du soir (en onglets) ----------
+  const ONGLETS = [['bilan', 'Bilan'], ['equipe', 'Équipe'], ['planning', 'Planning'], ['finances', 'Finances'], ['catalogue', 'Catalogue'], ['entretien', 'Entretien'], ['travaux', 'Travaux']];
+  const ICONES_CAT = { 'Déco': '🎨', 'Salle': '🪑', 'Réserve': '📦', 'Bar': '☕', 'Agrandir': '🏗️', 'Équipe': '🎓', 'Confort': '🔥' };
+  const ICONES_FOURN = { grossiste: '🏪', artisan: '🔥', importateur: '🚢' };
+  let onglet = 'bilan', poste = 0, dernierHtml = '';
+  const pct = x => (x >= 0 ? '+' : '−') + Math.round(Math.abs(x) * 100) + ' %';
+  function jauge(nom, val, max, ref, inverse = false) {
+    const ecart = ref ? val / ref - 1 : 0, mieux = inverse ? ecart < -.005 : ecart > .005, moins = inverse ? ecart > .005 : ecart < -.005;
+    return `<div class="jg"><span class="jg-nom">${nom}</span><span class="jg-barre"><i style="width:${Math.min(100, val / max * 100)}%"></i>${ref ? `<b style="left:${Math.min(100, ref / max * 100)}%"></b>` : ''}</span>`
+      + `<span class="jg-ecart ${mieux ? 'mieux' : moins ? 'moins' : ''}">${ref && (mieux || moins) ? pct(ecart) : ref ? '=' : ''}</span></div>`;
+  }
+  function carte({ img, icone, nom, tags = '', desc, jauges = '', bouton = '', cls = '' }) {
+    return `<div class="carte-cat ${cls}">${img ? `<img class="vig" src="${img}" alt="">` : `<span class="vig ico">${icone || '☕'}</span>`}
+      <div class="cc"><h4>${nom}${tags}</h4><p>${desc}</p>${jauges}</div>${bouton ? `<div class="cc-act">${bouton}</div>` : ''}</div>`;
+  }
+  const btnPrix = (prix, data, e, soir, txt) => `<button class="btn mini${!soir || e.argent < prix ? ' off' : ''}" ${data}>${soir ? (txt || fmt(Math.max(0, prix))) : 'le soir'}</button>`;
+  const montant = v => v < 0 ? '−' + fmt(-v) : fmt(v);
+  const ligneCompte = (nom, v, cls = '') => `<span class="${cls}">${nom}</span><b class="${cls}"${v < 0 ? ' style="color:var(--framboise)"' : ''}>${montant(v)}</b>`;
+
+  function ongletBilan(e, soir) {
+    const b = e.bilans.at(-1);
+    let h = '';
+    if (b) {
+      h += `<div class="journal-bilan"><span>${b.date} · ${Math.round(b.clients)} clients servis</span><b>${fmt(b.recettes)}</b>`
+        + `<span>Achats (grain, consommables…)</span><b>−${fmt(b.depenses)}</b><span>Salaires</span><b>−${fmt(b.detail.salaires)}</b><span>Énergie</span><b>−${fmt(b.detail.energie)}</b>`
+        + (b.detail.agios > .01 ? `<span>Agios du découvert</span><b>−${fmt(b.detail.agios)}</b>` : '')
+        + (b.defi ? `<span>Défi : ${b.defi.texte}</span><b style="color:${b.defi.reussi ? 'var(--sauge-f)' : 'var(--framboise)'}">${b.defi.reussi ? '+' + fmt(b.defi.prime) : 'raté'}</b>` : '')
+        + `<span class="total">Résultat du jour</span><b class="total" style="color:${b.benefice < 0 ? 'var(--framboise)' : 'var(--sauge-f)'}">${montant(b.benefice)}</b></div>`;
+      const partPerdus = b.perdus / Math.max(1, b.clients + b.perdus);
+      h += `<p class="legende">Satisfaction moyenne : <b>${b.satisfaction ? virg(b.satisfaction, 2) + ' ★' : '—'}</b> · ${Math.round(b.perdus)} client${b.perdus >= 2 ? 's' : ''} reparti${b.perdus >= 2 ? 's' : ''} sans être servi${b.perdus >= 2 ? 's' : ''}${partPerdus > .1 ? ' : <b class="rouge">il manque du monde ou de la place</b>' : ''}${b.viennoiseries > 0 ? ` · ${Math.round(b.viennoiseries)} croissants vendus, ${Math.round(b.invendus)} jetés` : ''}</p>`;
+    }
+    if (b?.heures) {
+      const max = Math.max(1, ...b.heures.map(x => x.ventes));
+      h += `<div class="heures"><div class="h-tete"><b>Clients heure par heure</b><span><i class="st"></i>équipe <i class="cl"></i>clients <i class="sk"></i>stock</span></div><div class="h-barres">` + b.heures.map((x, k) => {
+        const lim = x.stock > Math.max(x.station, x.clients) ? 'sk' : x.station >= x.clients ? 'st' : 'cl';
+        return `<div title="${7 + k} h : ${Math.round(x.ventes)} clients"><i class="${lim}" style="height:${Math.max(3, x.ventes / max * 100)}%"></i><small>${7 + k}</small></div>`;
+      }).join('') + `</div></div>`;
+    }
+    if (b?.avis?.length) h += `<div class="avis"><b class="avis-titre">Ce que disent les clients</b>` + b.avis.map(x => `<div class="un-avis"><span class="av-etoiles">${'★'.repeat(x.etoiles)}<i>${'★'.repeat(5 - x.etoiles)}</i></span><p>« ${x.texte} »</p><small>${x.nom}</small></div>`).join('') + `</div>`;
+    // Demain : la météo annoncée, et la boisson du jour
+    const prev = J.CATALOGUE_METEOS[e.meteoDemain] || J.CATALOGUE_METEOS.nuages;
+    const aff = prev.demande * (J.a(e, 'terrasse') ? prev.terrasse : 1) - 1;
+    const demain = { ...e, jour: e.jour + 1 };
+    h += `<div class="demain"><div class="dm-meteo"><span class="dm-ico">${prev.icone}</span><div><b>Demain, ${J.dateTexte(demain).toLowerCase()} : ${prev.nom.toLowerCase()}</b>
+      <small>Prévision juste 4 fois sur 5 · affluence ${Math.abs(aff) < .005 ? 'normale' : pct(aff)} · ${J.saison(demain).nom.toLowerCase()}</small></div></div>
+      <div class="dm-titre">Boisson du jour</div><div class="boissons">` + Object.values(J.CATALOGUE_BOISSONS).map(x => {
+        const ef = J.effetBoisson(x.id, prev.id), verrou = e.rep < x.rep, choisie = e.boisson === x.id;
+        return `<button class="boisson${choisie ? ' choisie' : ''}${verrou ? ' verrou' : ''}" data-boisson="${x.id}"><span>${x.icone}</span><b>${x.nom}</b>
+          <small class="${ef > .005 ? 'vert' : ef < -.005 ? 'rouge' : ''}">${verrou ? `${virg(x.rep)} ★` : x.id === 'aucune' ? 'panier normal' : `${pct(ef)} par client`}</small></button>`;
+      }).join('') + `</div></div>`;
+    // Réserve pour demain
+    const cap = J.capaciteReserve(e) / DOSES_SAC, tot = J.totalStock(e) / DOSES_SAC, hier = b ? (b.tasses + b.perdus * .5) * J.consoParTasse(e) / DOSES_SAC : 2;
+    const g = G[e.maison], pk = J.prixKg(e, g.id), place = Math.max(0, Math.floor(cap - tot + 1e-6)), n = Math.min(place, Math.floor(e.argent / pk));
+    const tient = tot / Math.max(.1, hier), pourDemain = Math.max(0, Math.min(n, Math.ceil(hier * 1.3 - tot)));
+    h += `<div class="commande-demain"><div class="cd-tete"><b>Réserve pour demain</b><span>${virg(tot)} / ${cap} kg</span></div>
+      <div class="cd-jauge"><i style="width:${Math.min(100, tot / cap * 100)}%"></i><b style="left:${Math.min(100, hier / cap * 100)}%" title="besoin d’hier"></b></div>
+      <p>Hier : ${virg(hier)} kg de besoin · ta réserve tient <b class="${tient < 1.1 ? 'rouge' : 'vert'}">${tient >= 10 ? 'plus de 10' : virg(tient)} jour${tient >= 2 ? 's' : ''}</b>${e.abonnement.kg ? ` · commande permanente : ${e.abonnement.kg} kg/jour` : ''}</p>
+      <p>Fraîcheur du ${g.court} : <b class="${J.fraicheur(e, g.id) < .9 ? 'rouge' : 'vert'}">${Math.round(J.fraicheur(e, g.id) * 100)} %</b>. Un grain garde son goût 2 jours, puis en perd chaque jour : ne commande pas trop d’avance.</p>
+      ${soir ? `<div class="cd-boutons"><button class="btn vert${pourDemain < 1 ? ' off' : ''}" data-plein="${g.id}:${pourDemain}">Pour demain<small>${pourDemain} kg · ${fmt(pourDemain * pk)}</small></button>`
+        + `<button class="btn${n < 1 ? ' off' : ''}" data-plein="${g.id}:${n}">Plein<small>${n} kg · ${fmt(n * pk)}</small></button></div><p class="cd-grain">${g.nom} · ${fmt(pk)} le kilo (change de grain dans la Réserve)</p>` : ''}</div>`;
+    const c = J.chargesJour(e), jl = J.joursAvantLoyer(e);
+    h += `<p class="fait" style="color:var(--cafe-doux)">Charges de demain : environ ${fmt(c.total)} (salaires ${fmt(c.salaires)}, énergie ${fmt(c.energie)}) · loyer de ${fmt(J.loyerMois(e) + MOIS.assurance)} ${jl === 0 ? 'ce soir' : `dans ${jl} jour${jl > 1 ? 's' : ''}`}</p>`;
+    return h;
+  }
+
+  // L'équipe : les employés (rôle, niveau, trait, salaire, fatigue, moral), puis les candidats
+  const pips = (n, max = 5) => { let h = '<span class="pips">'; for (let k = 0; k < max; k++) h += `<i class="${k < n ? 'on' : ''}"></i>`; return h + '</span>'; };
+  const barreEtat = (nom, v, mauvais) => `<div class="etat-barre"><span>${nom}</span><span class="eb"><i class="${mauvais ? 'rouge' : ''}" style="width:${Math.round(v * 100)}%"></i></span></div>`;
+  function ongletEquipe(e, soir) {
+    const masse = J.masseSalarialeJour(e);
+    let h = `<p class="legende">Chaque employé coûte son salaire horaire × ${virg(PERSONNEL.charges, 2)} (charges), pour les heures du planning. Au-delà de ${PERSONNEL.semaine} h par semaine : heures sup (+25 %). Trop d’heures fatiguent ; un salaire sous le marché fait baisser le moral, et un employé malheureux démissionne.</p>`;
+    h += `<div class="section-titre">Ton équipe · ${fmt(masse)} par jour</div>`;
+    h += e.equipe.map(p => {
+      const roles = Object.keys(ROLES).filter(r => !(p.gerant && r === 'cuisine')).map(r => `<button class="btn mini${p.role === r ? ' vert' : ''}" data-role="${p.id}:${r}">${ICONES_ROLE[r]} ${ROLES[r]}</button>`).join('');
+      const planning = p.gerant ? '<small>Toujours là, de 7 h à 19 h, sans salaire.</small>' : MOMENTS.map((m, k) => `<button class="plan${p.planning[k] ? ' on' : ''}" data-plan="${p.id}:${k}:${p.planning[k] ? 0 : 1}" title="${m.nom} (${m.de} h – ${m.a} h)">${ICONES_MOMENTS[k]}<small>${COURTS_MOMENTS[k]}</small></button>`).join('');
+      const trait = p.trait ? J.CATALOGUE_TRAITS[p.trait] : null;
+      const sousPaye = !p.gerant && p.salaire < J.salaireMarche(p.comp) - .01;
+      const desc = (p.gerant ? 'C’est toi. ' : `${fmt(p.salaire)}/h${sousPaye ? ` <b class="rouge">(marché : ${fmt(J.salaireMarche(p.comp))})</b>` : ''} · ${J.heuresPlanifiees(p)} h demain · ${Math.round(p.heuresSemaine || 0)} h cette semaine · ${fmt(J.coutJournee(p))}/jour. `)
+        + (trait ? `<i>${trait.nom} : ${trait.desc}.</i>` : '') + (p.formation ? ' <b>En formation demain.</b>' : '');
+      const etats = p.gerant ? '' : barreEtat('Fatigue', p.fatigue || 0, (p.fatigue || 0) > .6) + barreEtat('Moral', p.moral ?? 1, (p.moral ?? 1) < .35);
+      const actions = p.gerant ? '' : `<div class="actions-emp"><button class="btn mini" data-sal="${p.id}:-0.5">− 0,50 €</button><button class="btn mini" data-sal="${p.id}:0.5">+ 0,50 €</button>`
+        + (p.comp < 5 && !p.formation ? btnPrix(J.coutFormation(e), `data-former="${p.id}"`, e, soir, `Former · ${fmt(J.coutFormation(e))}`) : '')
+        + `<button class="btn mini rouge" data-renvoi="${p.id}">Renvoyer</button></div>`;
+      return `<div class="carte-cat employe"><span class="vig ico">${ICONES_ROLE[p.role]}</span><div class="cc">
+        <h4>${p.nom} ${pips(p.comp)}</h4><p>${desc}</p>${etats}<div class="roles">${roles}</div><div class="planning">${planning}</div>${actions}</div></div>`;
+    }).join('');
+    h += `<div class="section-titre">Candidats · nouveaux chaque lundi</div>`;
+    h += e.candidats.length ? e.candidats.map(c => {
+      const trait = c.trait ? J.CATALOGUE_TRAITS[c.trait] : null, cout = c.salaire * PERSONNEL.charges * 7;
+      return carte({ icone: ICONES_ROLE[c.role], nom: `${c.nom} ${pips(c.comp)}`, tags: `<span class="tag cat">${ROLES[c.role]}</span>`,
+        desc: `${fmt(c.salaire)}/h · environ ${fmt(cout)} par jour pour 7 h (matin + midi)${trait ? ` · <i>${trait.nom} : ${trait.desc}</i>` : ''}`,
+        bouton: `<button class="btn mini vert" data-embauche="${c.id}">Embaucher</button>` });
+    }).join('') : '<p class="legende">Plus de candidat cette semaine. D’autres se présenteront lundi.</p>';
+    return h;
+  }
+
+  // Formule du moment : un interrupteur, son effet
+  function ligneFormule(e, k, soir) {
+    const f = FORMULES.find(x => x.moment === k); if (!f) return '';
+    const ouverte = J.formuleOuverte(e, f), actif = !!e.formules[f.id] && ouverte;
+    const besoin = (f.req || []).filter(r => !J.a(e, r)).map(r => T[r].nom.toLowerCase());
+    const cuisine = f.id === 'petitdej' || e.equipe.some(p => p.role === 'cuisine' && p.planning[k]);
+    return `<div class="formule${actif ? ' active' : ''}${ouverte ? '' : ' verrou'}"><span>${f.icone}</span><div><b>${f.nom}</b>
+      <small>${ouverte ? `+${Math.round(f.demande * 100)} % de clients, panier ${pct(f.panier - f.cout)} (ingrédients déduits)${cuisine ? '' : ' · <b class="rouge">il faut quelqu’un en cuisine à ce moment</b>'}`
+        : `Il faut : ${besoin.join(', ') || `${virg(f.rep)} ★`}`}</small></div>
+      ${ouverte ? `<button class="btn mini${actif ? ' vert' : ''}${soir ? '' : ' off'}" data-formule="${f.id}:${actif ? 0 : 1}">${actif ? 'Active' : 'Activer'}</button>` : ''}</div>`;
+  }
+  // Planning : qui travaille à chaque moment, ce qui a limité hier, et le tarif du moment
+  function ongletPlanning(e, soir) {
+    const hier = e.bilans.at(-1);
+    let h = `<p class="legende">Pour chaque moment de la journée : qui est là, ce qui a limité les ventes hier, et le <b>tarif</b> du moment (il ajuste ton prix de base de ${fmt(e.prix)} : plus cher au rush, moins cher au creux). Le planning de chacun se règle dans l’onglet Équipe.</p>`;
+    h += `<div class="legende-barres"><span><i class="st"></i>équipe ou place</span><span><i class="cl"></i>clients</span><span><i class="sk"></i>stock</span></div>`;
+    h += MOMENTS.map((m, k) => {
+      const s = hier?.moments?.[k], t = s?.t || 0, c = J.capacites(e, k);
+      const p = x => t ? Math.round(x / t * 100) : 0;
+      const qui = e.equipe.filter(x => J.presentA(x, k)).map(x => `${ICONES_ROLE[x.role]} ${x.nom}`).join(' · ');
+      let conseil = 'Pas encore de chiffres : attends la fin d’une journée.';
+      if (t) conseil = s.stock / t > .2 ? '<b class="rouge">Rupture de stock</b> : commande plus de grain.'
+        : s.station / t > .5 ? '<b class="vert">Ça coince</b> : il manque du monde ou des places à ce moment.'
+        : s.station / t > .2 ? 'Ça coince parfois : une personne de plus peut se rentabiliser.'
+        : 'Ce sont les clients qui manquent : inutile d’ajouter du monde.';
+      const tf = e.tarifs[k] ?? 1;
+      return `<div class="carte-cat moment-carte"><span class="vig ico">${ICONES_MOMENTS[k]}</span><div class="cc">
+        <h4>${m.nom} <span class="tag cat">${m.de} h – ${m.a} h</span></h4>
+        <p>${qui || 'personne'} · capacité ${Math.round(Math.min(c.boissons, c.moulin, c.salle, c.places))} clients/h</p>
+        ${t ? `<div class="barre-moment"><i class="st" style="width:${p(s.station)}%"></i><i class="cl" style="width:${p(s.clients)}%"></i><i class="sk" style="width:${p(s.stock)}%"></i></div>
+        <p>Hier : <b>${Math.round(s.ventes)}</b> clients · ${conseil}</p>` : `<p>${conseil}</p>`}
+        <div class="renfort tarif"><button class="btn mini${tf <= TARIFS.min ? ' off' : ''}" data-tarif="${k}:${tf - TARIFS.pas}">−</button>
+          <span class="tarif-val ${tf > 1 ? 'haut' : tf < 1 ? 'bas' : ''}">${tf === 1 ? 'tarif normal' : `${tf > 1 ? '+' : '−'}${Math.round(Math.abs(tf - 1) * 100)} %`}</span>
+          <button class="btn mini${tf >= TARIFS.max ? ' off' : ''}" data-tarif="${k}:${tf + TARIFS.pas}">+</button><small>${fmt(e.prix * tf)} l’espresso</small></div>
+        ${ligneFormule(e, k, soir)}
+      </div></div>`;
+    }).join('');
+    return h;
+  }
+
+  // Finances : trésorerie, mois en cours, historique, banque
+  function compte(m, partiel) {
+    const res = m.resultat ?? (m.ca - m.achats - m.salaires - m.loyer - m.energie - m.entretien - m.interets);
+    return `<div class="journal-bilan">${ligneCompte('Chiffre d’affaires', m.ca)}${ligneCompte('Achats (grain, lait, consommables)', -m.achats)}${ligneCompte('Salaires et charges', -m.salaires)}`
+      + `${ligneCompte('Loyer et assurance', -m.loyer)}${ligneCompte('Énergie', -m.energie)}${ligneCompte('Entretien', -m.entretien)}${m.interets > .5 ? ligneCompte('Intérêts et agios', -m.interets) : ''}`
+      + `${m.impots ? ligneCompte('Impôt (15 %)', -m.impots) : ''}${ligneCompte(partiel ? 'Résultat (avant loyer)' : 'Résultat', res, 'total')}</div>`
+      + (m.investissements ? `<p class="legende">Investissements (matériel, travaux, déco) : ${fmt(m.investissements)}. Ils sortent de la caisse mais ne comptent pas dans le résultat.</p>` : '');
+  }
+  function ongletFinances(e, soir) {
+    const j = J.joursAvantLoyer(e), loyer = J.loyerMois(e) + MOIS.assurance, entretien = J.entretienMois(e), mens = e.pret?.mensualite || 0;
+    let h = `<div class="tresorerie"><div><small>Caisse</small><b class="${e.argent < 0 ? 'rouge' : ''}">${montant(e.argent)}</b></div>
+      <div><small>Fin du mois</small><b>${j === 0 ? 'ce soir' : `dans ${j} j`}</b></div><div><small>À payer ce jour-là</small><b>${fmt(loyer + entretien + mens)}</b></div></div>`;
+    h += `<p class="legende">Le ${MOIS.jours}e jour : loyer et assurance ${fmt(loyer)}, entretien du matériel ${fmt(entretien)}${mens ? `, mensualité du prêt ${fmt(mens)}` : ''}, et 15 % d’impôt sur le résultat s’il est positif.${e.argent < 0 ? ` <b class="rouge">Découvert : ${virg(DECOUVERT.agios * 100 * 365, 0)} % d’agios par an. Sous ${montant(DECOUVERT.faillite)}, c’est la faillite.</b>` : ''}</p>`;
+    h += `<div class="section-titre">Mois en cours</div>` + compte(e.mois, true);
+    if (e.historiqueMois.length) {
+      h += `<div class="section-titre">Mois passés</div><div class="bilans mois"><span></span><span>CA</span><span>Salaires</span><span>Résultat</span>`
+        + [...e.historiqueMois].reverse().map(m => `<b>${m.nom}</b><span>${fmt(m.ca)}</span><span>${fmt(m.salaires)}</span><span class="${m.resultat < 0 ? 'neg' : 'pos'}">${montant(m.resultat)}</span>`).join('') + `</div>`;
+    }
+    h += `<div class="section-titre">Banque</div>`;
+    if (e.pret) {
+      const p = e.pret;
+      h += carte({ icone: '🏦', nom: `Prêt de ${fmt(p.montant)}`, desc: `Reste ${fmt(p.capital)} à rembourser · ${fmt(p.mensualite)} par mois pendant encore ${p.restant} mois · taux ${virg(p.taux * 100)} %` });
+    } else {
+      h += `<p class="legende">Un prêt pour investir plus tôt (une machine, la cloison…). La banque regarde ton chiffre d’affaires des 7 derniers jours ; le petit prêt est accordé à tout nouveau café.</p>`
+        + PRETS.map(p => { const ok = J.pretAccorde(e, p.id), m = J.mensualite(p.montant, p.taux, p.mois);
+          return carte({ icone: '🏦', nom: `Prêt de ${fmt(p.montant)}`, desc: `${fmt(m)} par mois pendant ${p.mois} mois · taux ${virg(p.taux * 100)} % · coût total ${fmt(m * p.mois - p.montant)}`,
+            bouton: ok ? `<button class="btn mini vert" data-pret="${p.id}">Emprunter</button>` : '<span class="tag-gros verrou">refusé</span>', cls: ok ? '' : 'verrou' }); }).join('');
+    }
+    return h;
+  }
+
+  function ongletCatalogue(e, soir) {
+    const MS = Object.values(J.CATALOGUE_MACHINES), MOS = Object.values(J.CATALOGUE_MOULINS), FS = Object.values(J.CATALOGUE_FOURNISSEURS);
+    const max = k => Math.max(...MS.map(m => m[k])), maxM = k => Math.max(...MOS.map(m => m[k]));
+    poste = Math.min(poste, J.nbPostes(e) - 1);
+    let h = `<div class="section-titre">Machines</div><p class="legende">Chaque machine a besoin d’un barista pour tourner.</p><div class="postes">` + Array.from({ length: J.nbPostes(e) }, (_, p) => {
+      const id = e.machines[p];
+      return `<button class="poste${p === poste ? ' choisi' : ''}" data-poste="${p}">${id ? `<img src="${scene.vignette(J.CATALOGUE_MACHINES[id].visuel, J.CATALOGUE_MACHINES[id].teinte)}" alt="">` : '<span>＋</span>'}<small>Poste ${p + 1}</small></button>`;
+    }).join('') + `</div>`;
+    const cur = e.machines[poste] ? J.CATALOGUE_MACHINES[e.machines[poste]] : null;
+    h += `<p class="legende">Les barres comparent avec ${cur ? `la ${cur.nom}` : 'un poste vide'} (le trait). <span class="mieux">vert</span> = mieux, <span class="moins">rouge</span> = moins bien.</p>`;
+    h += MS.filter(m => m.prix > 0 || m.id === cur?.id).map(m => {
+      const installe = cur?.id === m.id, verrou = e.rep < (m.rep || 0), net = m.prix - (cur ? cur.prix * .25 : 0);
+      const jauges = jauge('Vitesse', m.vitesse, max('vitesse'), cur?.vitesse) + jauge('Goût', m.qualite, max('qualite'), cur?.qualite) + jauge('Fiabilité', m.fiabilite, max('fiabilite'), cur?.fiabilite);
+      const bouton = installe ? '<span class="tag-gros">installée</span>' : verrou ? `<span class="tag-gros verrou">${virg(m.rep)} ★</span>` : btnPrix(net, `data-machine="${poste}:${m.id}"`, e, soir);
+      return carte({ img: scene.vignette(m.visuel, m.teinte), nom: m.nom, desc: `Jusqu’à ${Math.round(m.vitesse * 80)} tasses/h. ` + m.desc + (m.buse ? ' <b>Buse à lait.</b>' : '') + (!installe && cur && !verrou ? ` <i>Reprise de l’ancienne : ${fmt(cur.prix * .25)}.</i>` : ''),
+        jauges, bouton, cls: installe ? 'actuelle' : verrou ? 'verrou' : '' });
+    }).join('');
+    const mo = J.CATALOGUE_MOULINS[e.moulin];
+    h += `<div class="section-titre">Moulin</div>` + MOS.filter(m => m.prix > 0 || m.id === e.moulin).map(m => {
+      const installe = m.id === e.moulin, verrou = e.rep < (m.rep || 0), net = m.prix - mo.prix * .25;
+      const jauges = jauge('Vitesse', m.vitesse, maxM('vitesse'), mo.vitesse) + jauge('Goût', m.qualite, maxM('qualite'), mo.qualite) + jauge('Fiabilité', m.fiabilite, maxM('fiabilite'), mo.fiabilite);
+      const bouton = installe ? '<span class="tag-gros">installé</span>' : verrou ? `<span class="tag-gros verrou">${virg(m.rep)} ★</span>` : btnPrix(net, `data-moulin="${m.id}"`, e, soir);
+      return carte({ img: scene.vignette(m.visuel, m.teinte), nom: m.nom, desc: `${Math.round(m.vitesse * 120)} tasses/h. ` + m.desc, jauges, bouton, cls: installe ? 'actuelle' : verrou ? 'verrou' : '' });
+    }).join('');
+    const fo = J.CATALOGUE_FOURNISSEURS[e.fournisseur], maxP = Math.max(...FS.map(f => f.prixMult)), maxQ = Math.max(...FS.map(f => f.qualite));
+    h += `<div class="section-titre">Fournisseur de grains</div>` + FS.map(f => {
+      const choisi = f.id === e.fournisseur, verrou = e.rep < f.rep;
+      const jauges = jauge('Goût', f.qualite, maxQ, fo.qualite) + jauge('Prix', f.prixMult, maxP, fo.prixMult, true) + jauge('À l’heure', 1 - f.retard, 1, 1 - fo.retard);
+      const bouton = choisi ? '<span class="tag-gros">choisi</span>' : verrou ? `<span class="tag-gros verrou">${virg(f.rep)} ★</span>` : `<button class="btn mini vert" data-fourn="${f.id}">Choisir</button>`;
+      return carte({ icone: ICONES_FOURN[f.id], nom: f.nom, desc: f.desc, jauges, bouton, cls: choisi ? 'actuelle' : verrou ? 'verrou' : '' });
+    }).join('');
+    return h;
+  }
+
+  function ongletEntretien(e, soir) {
+    let h = `<div class="section-titre">Détartrage</div><p class="legende">Le calcaire s’accumule chaque jour : jusqu’à −20 % de goût, et des pannes plus fréquentes. L’entretien courant du matériel est aussi payé chaque fin de mois (${fmt(J.entretienMois(e))}).</p>`;
+    e.machines.forEach((id, p) => {
+      if (!id) return;
+      const m = J.CATALOGUE_MACHINES[id], c = e.calcaire[p] || 0;
+      const bouton = c <= 0 ? '<span class="tag-gros">propre</span>' : btnPrix(J.coutDetartrage(e, p), `data-detartrer="${p}"`, e, soir, `Détartrer · ${fmt(J.coutDetartrage(e, p))}`);
+      h += carte({ img: scene.vignette(m.visuel, m.teinte), nom: `Poste ${p + 1} · ${m.nom}`, desc: `Calcaire : <b class="${c >= .5 ? 'rouge' : ''}">${Math.round(c * 100)} %</b> · goût −${Math.round(c * 20)} %`,
+        jauges: `<div class="calcaire"><i style="width:${c * 100}%"></i></div>`, bouton });
+    });
+    h += `<p class="legende">Les pannes arrivent pendant le service. Un barista de niveau 3 ou plus répare tout seul en quelques secondes ; sinon, touche la station 3 fois.</p>`;
+    return h;
+  }
+
+  function apercuDeco(x, type) {
+    if (type === 'mur') {
+      if (x.motif === 'brique') return `repeating-linear-gradient(0deg, ${x.c2} 0 2px, transparent 2px 9px), ${x.c1}`;
+      if (x.motif === 'boiserie') return `linear-gradient(${x.c2} 45%, ${x.c1} 45%)`;
+      if (x.motif === 'jungle') return `radial-gradient(ellipse 8px 4px at 30% 30%, ${x.c2} 90%, transparent), radial-gradient(ellipse 8px 4px at 70% 70%, ${x.c2} 90%, transparent), ${x.c1}`;
+      return `repeating-linear-gradient(90deg, ${x.c1} 0 8px, ${x.c2} 8px 12px)`;
+    }
+    if (x.motif === 'damier') return `conic-gradient(${x.c1} 25%, ${x.c2} 0 50%, ${x.c1} 0 75%, ${x.c2} 0) 0 0 / 16px 16px`;
+    if (x.motif === 'lames') return `repeating-linear-gradient(0deg, ${x.c1} 0 7px, ${x.c2} 7px 14px)`;
+    if (x.motif === 'tomettes') return `radial-gradient(circle at 50% 50%, ${x.c1} 55%, #E6D3BC 57%) 0 0 / 12px 12px, ${x.c2}`;
+    if (x.motif === 'terrazzo') return `radial-gradient(circle at 20% 30%, ${x.c2} 2px, transparent 3px), radial-gradient(circle at 70% 60%, #8FA98B 2px, transparent 3px), radial-gradient(circle at 40% 80%, #E8B54A 2px, transparent 3px), ${x.c1}`;
+    return x.c1;
+  }
+  function sectionDeco(e, soir) {
+    if (!J.a(e, 'peinture')) return `<div class="section-titre">Décoration</div><p class="legende">Fais d’abord le coup de peinture : ensuite, tu choisiras la couleur des murs et le sol.</p><div class="section-titre">Travaux</div>`;
+    const mur = J.murActuel(e), sol = J.solActuel(e), ok = J.harmonie(e);
+    const choix = (type, liste, actuel) => `<div class="deco-choix">` + liste.map(x => {
+      const verrou = e.rep < (x.rep || 0), p = J.prixDeco(e, x);
+      return `<button class="deco${x.id === actuel.id ? ' choisie' : ''}${verrou ? ' verrou' : ''}" data-deco="${type}:${x.id}" title="${x.nom}">
+        <i style="background:${apercuDeco(x, type)}"></i><b>${x.nom}</b><small>${verrou ? `${virg(x.rep)} ★` : x.id === actuel.id ? 'posé' : p ? fmt(p) : 'gratuit'} · ${STYLES[x.style]}</small></button>`;
+    }).join('') + `</div>`;
+    return `<div class="section-titre">Décoration</div>
+      <div class="harmonie ${ok ? 'oui' : ''}">${ok ? `✨ <b>Harmonie ${STYLES[mur.style].toLowerCase()}</b> : clients plus contents et +4 % d’attrait` : `Murs <b>${STYLES[mur.style].toLowerCase()}</b>, sol <b>${STYLES[sol.style].toLowerCase()}</b> : choisis le même style pour l’harmonie.`}</div>
+      <div class="dm-titre">Murs</div>${choix('mur', MURS, mur)}<div class="dm-titre">Sol</div>${choix('sol', SOLS, sol)}${soir ? '' : '<p class="legende">Les changements de déco se font le soir.</p>'}
+      <div class="section-titre">Travaux</div>`;
+  }
+  function ongletTravaux(e, soir) {
+    const deco = sectionDeco(e, soir);
+    const dispo = TRAVAUX.filter(t => J.disponible(e, t)).sort((x, y) => x.prix - y.prix);
+    const faits = TRAVAUX.filter(t => J.a(e, t.id)), bloques = TRAVAUX.length - dispo.length - faits.length;
+    return deco + `<p class="legende">${J.places(e)} places assises aujourd’hui. Agrandir fait monter le loyer : regarde l’onglet Finances avant de te lancer.</p>`
+      + dispo.map(t => carte({ icone: ICONES_CAT[t.cat], nom: t.nom, tags: `<span class="tag cat">${t.cat}</span>`, desc: t.desc, bouton: btnPrix(t.prix, `data-achat="${t.id}"`, e, soir) })).join('')
+      + (bloques ? `<p class="fait" style="color:var(--cafe-doux)">Encore ${bloques} travaux à débloquer plus tard…</p>` : '')
+      + `<div class="progres-travaux"><span>${faits.length} / ${TRAVAUX.length} travaux faits</span><div class="jauge"><span style="width:${faits.length / TRAVAUX.length * 100}%"></span></div></div>`;
+  }
+
+  function nbAchetables(e) {
+    const cur = e.machines[poste] ? J.CATALOGUE_MACHINES[e.machines[poste]] : null;
+    return {
+      catalogue: Object.values(J.CATALOGUE_MACHINES).filter(m => m.prix > 0 && e.rep >= (m.rep || 0) && !e.machines.includes(m.id) && e.argent >= m.prix - (cur ? cur.prix * .25 : 0)).length,
+      equipe: e.equipe.filter(p => !p.gerant && ((p.fatigue || 0) > .6 || (p.moral ?? 1) < .35)).length,
+      entretien: e.calcaire.filter(c => c >= .5).length,
+    };
+  }
+
+  function majTravaux() {
+    const e = E(), soir = !J.ouvert(e);
+    $('t-titre').textContent = soir ? 'Journal du soir' : 'Journal';
+    $('t-desc').textContent = soir ? `${J.dateTexte(e)}, le café est fermé. Prépare demain, puis ouvre le café.`
+      : `Le café est ouvert (${heureTexte(e.horloge)}). Tu peux tout regarder ; recrutement, achats et commandes normales se font le soir.`;
+    const nb = nbAchetables(e);
+    let h = `<div class="onglets">` + ONGLETS.map(([id, nom]) => `<button class="onglet${id === onglet ? ' choisi' : ''}" data-onglet="${id}">${nom}${nb[id] ? `<span class="pastille">${nb[id]}</span>` : ''}</button>`).join('') + `</div>`;
+    if (soir && !e.faillite) h += `<button class="btn vert" data-ouvrir style="width:100%;margin:2px 0 8px">☀️ Ouvrir le café (7 h)</button>`;
+    const f = { catalogue: ongletCatalogue, equipe: ongletEquipe, planning: ongletPlanning, finances: ongletFinances, entretien: ongletEntretien, travaux: ongletTravaux }[onglet] || ongletBilan;
+    h += f(e, soir);
+    if (h !== dernierHtml) { dernierHtml = h; $('t-liste').innerHTML = h; }
+  }
+  $('t-liste').addEventListener('pointerdown', ev => {
+    const e = E(), bt = ev.target.closest('button'); if (!bt || bt.classList.contains('off')) return;
+    const res = r => { if (r === 'argent') toast("Pas encore assez d'argent."); if (r === 'ferme') toast('Ça se fait le soir, après 19 h.'); if (r === 'ok') { scene.majDecor(e); sons.achat(); jeu.sauver(); } return r; };
+    const d = bt.dataset;
+    if (d.onglet) { onglet = d.onglet; sons.clic(); majTravaux(); $('p-travaux').scrollTop = 0; return; }
+    if (d.deco) {
+      const [type, id] = d.deco.split(':'), r = J.choisirDeco(e, type, id);
+      if (r === 'ok') { scene.majDecor(e); sons.achat(); jeu.sauver(); toast(J.harmonie(e) ? '✨ <b>Harmonie !</b> Les murs et le sol vont parfaitement ensemble.' : `Nouvelle déco : <b>${(type === 'mur' ? J.CATALOGUE_MURS : J.CATALOGUE_SOLS)[id].nom}</b>.`); }
+      else if (r === 'argent') toast("Pas encore assez d'argent."); else if (r === 'verrou') toast('Il faut une meilleure note pour cette déco.'); else if (r === 'ferme') toast('Les travaux de déco se font le soir.');
+      majTravaux(); return;
+    }
+    if (d.boisson) { const r = J.choisirBoisson(e, d.boisson); if (r === 'ok') { sons.clic(); jeu.sauver(); } else if (r === 'verrou') toast('Il faut une meilleure note pour cette boisson.'); else if (r === 'ferme') toast('La boisson du jour se prépare le soir.'); majTravaux(); return; }
+    if (d.formule) { const [id, v] = d.formule.split(':'), r = J.reglerFormule(e, id, v === '1'); if (r === 'ok') { sons.clic(); jeu.sauver(); } else if (r === 'ferme') toast('Les formules se préparent le soir.'); majTravaux(); return; }
+    if (d.tarif) { const [k, v] = d.tarif.split(':').map(Number); if (J.reglerTarif(e, k, v) === 'ok') { sons.clic(); jeu.sauver(); } majTravaux(); return; }
+    if (d.detartrer) { const p = +d.detartrer; if (res(J.detartrer(e, p)) === 'ok') toast(`Machine du poste ${p + 1} détartrée : elle retrouve tout son goût.`); majTravaux(); return; }
+    if (d.poste) { poste = +d.poste; sons.clic(); majTravaux(); return; }
+    if ('ouvrir' in d) { jeu.ouvrirCafe(); fermer(); return; }
+    if (d.plein) { const [g, n] = d.plein.split(':'), r = J.remplir(e, g, false, +n); if (typeof r === 'number') { sons.clic(); toast(`Commande passée : <b>${r} kg</b> de ${G[g].nom}, livrés demain à 7 h.`); jeu.sauver(); } majTravaux(); return; }
+    if (d.machine) { const [p, id] = d.machine.split(':'); if (res(J.acheterMachine(e, +p, id)) === 'ok') toast(`<b>${J.CATALOGUE_MACHINES[id].nom}</b> installée au poste ${+p + 1}. Il lui faut un barista !`); majTravaux(); return; }
+    if (d.moulin) { if (res(J.acheterMoulin(e, d.moulin)) === 'ok') toast(`<b>${J.CATALOGUE_MOULINS[d.moulin].nom}</b> installé.`); majTravaux(); return; }
+    if (d.fourn) { J.choisirFournisseur(e, d.fourn); sons.clic(); toast(`Fournisseur : <b>${J.CATALOGUE_FOURNISSEURS[d.fourn].nom}</b>.`); majTravaux(); return; }
+    // Équipe
+    if (d.embauche) { const c = e.candidats.find(x => x.id === d.embauche); if (J.embaucher(e, d.embauche) === 'ok') { sons.achat(); jeu.sauver(); toast(`<b>${c.nom}</b> rejoint l’équipe (${ROLES[c.role].toLowerCase()}). Planning par défaut : matin et midi.`); } majTravaux(); return; }
+    if (d.plan) { const [id, k, v] = d.plan.split(':'); J.reglerPlanning(e, id, +k, v === '1'); sons.clic(); jeu.sauver(); majTravaux(); return; }
+    if (d.role) { const [id, r] = d.role.split(':'); J.changerRole(e, id, r); sons.clic(); jeu.sauver(); majTravaux(); return; }
+    if (d.sal) { const [id, v] = d.sal.split(':'); J.changerSalaire(e, id, +v); sons.clic(); jeu.sauver(); majTravaux(); return; }
+    if (d.former) { const p = J.employe(e, d.former); if (res(J.former(e, d.former)) === 'ok') toast(`<b>${p.nom}</b> part en formation demain (absent toute la journée) : un niveau de plus au retour.`, 5000); majTravaux(); return; }
+    if (d.renvoi) {
+      const p = J.employe(e, d.renvoi); if (!p) return;
+      bulle(`Renvoyer ${p.nom} ? Il faudra verser une indemnité de ${fmt(J.indemnite(p))}.`, { titre: 'Renvoyer ?', boutons: [{ label: 'Non', cls: 'vert' },
+        { label: 'Renvoyer', cls: 'rouge', fn: () => { J.renvoyer(E(), p.id); jeu.sauver(); toast(`${p.nom} a quitté le café.`); majTravaux(); } }] });
+      return;
+    }
+    if (d.pret) {
+      const p = PRETS.find(x => x.id === d.pret);
+      bulle(`Emprunter ${fmt(p.montant)} ? Tu rembourseras ${fmt(J.mensualite(p.montant, p.taux, p.mois))} chaque fin de mois pendant ${p.mois} mois.`, { titre: 'La banque', boutons: [{ label: 'Pas maintenant' },
+        { label: 'Signer', cls: 'vert', fn: () => { if (J.emprunter(E(), p.id) === 'ok') { sons.achat(); jeu.sauver(); toast(`<b>+${fmt(p.montant)}</b> sur le compte. Investis bien !`); } majTravaux(); } }] });
+      return;
+    }
+    if (d.achat) { const id = d.achat; if (res(J.acheter(e, id)) === 'ok') toast(`<b>${T[id].nom}</b> : ${MOTS_TRAVAUX[id] || "c'est fait !"}`, 5000); majTravaux(); }
+  });
+
+  function majPrix() {
+    const e = E(), pj = J.prixJuste(e), r = J.prixEffectif(e) / pj, b = J.bilan(e);
+    const tf = J.ouvert(e) ? e.tarifs[J.momentIndex(e)] : 1;
+    $('x-prix').innerHTML = fmt(e.prix) + (tf !== 1 ? ` <small class="tarif-moment">${J.momentActuel(e).nom.toLowerCase()} : ${fmt(J.prixEffectif(e))}</small>` : '');
+    $('x-juste').textContent = `prix juste ${fmt(pj)}`;
+    $('x-clients').textContent = J.ouvert(e) ? `${Math.round(b.parHeure.demande)}/h` : 'fermé';
+    $('x-marge').innerHTML = `${fmt(J.panier(e) - J.coutTasse(e))} <em>ticket ${fmt(J.panier(e))} · grain ${fmt(J.coutTasse(e))}</em>`;
+    const fd = J.facteurDosage(e), k = J.consoParTasse(e);
+    $('x-dosage').textContent = `${virg(e.dosage, e.dosage % 1 ? 1 : 0)} g`;
+    $('x-dose-effet').textContent = Math.abs(k - 1) < .01 ? 'référence' : `goût ${fd >= 1 ? '+' : '−'}${Math.round(Math.abs(fd - 1) * 100)} % · grain ${k >= 1 ? '+' : '−'}${Math.round(Math.abs(k - 1) * 100)} %`;
+    const av = $('x-avis');
+    if (r > 1.1) { av.className = 'alerte'; av.textContent = `Trop cher (+${Math.round((r - 1) * 100)} %) : les clients fuient et la note baisse.`; }
+    else if (r < .8) { av.className = 'alerte'; av.textContent = 'Très bon marché : beaucoup de clients, mais peu de marge.'; }
+    else { av.className = 'alerte ok'; av.textContent = J.ouvert(e) && b.chaine < b.demande ? 'Tu refuses du monde : tu peux monter un peu le prix.' : 'Bon équilibre entre affluence et marge.'; }
+  }
+
+  // ---------- Carnet ----------
+  $('c-renommer').onclick = () => { const n = J.nettoyerNom($('c-nom').value); if (!n) return toast('Donne un nom à ton café.'); jeu.renommer(n); sons.achat(); toast(`Ton café s’appelle maintenant <b>${n}</b>.`); };
+  $('c-nom').addEventListener('keydown', ev => { if (ev.key === 'Enter') $('c-renommer').click(); });
+  $('c-exporter').onclick = async () => {
+    const code = jeu.exporter();
+    let copie = false; try { await navigator.clipboard.writeText(code); copie = true; } catch { /* presse-papier refusé */ }
+    try { const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([code], { type: 'text/plain' })), download: `sauvegarde-gestion-${J.nettoyerNom(J.nomCafe(E())).replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'cafe'}.txt` }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); } catch { /* pas de téléchargement */ }
+    toast(copie ? 'Sauvegarde <b>copiée</b> (et téléchargée). Garde ce code bien au chaud !' : 'Sauvegarde téléchargée. Garde ce fichier bien au chaud !', 5000); sons.clic();
+  };
+  $('c-importer').onclick = () => {
+    const code = prompt('Colle ici le code de ta sauvegarde (il commence par PG5:). Attention : la partie en cours sera remplacée.');
+    if (!code) return;
+    if (jeu.importer(code)) { sons.succes(); toast(`Sauvegarde chargée : bienvenue à <b>${J.nomCafe(E())}</b> !`); } else toast('Ce code ne ressemble pas à une sauvegarde de la version gestion.');
+  };
+  function majCarnet() {
+    const e = E(), m = e.meta;
+    if (document.activeElement !== $('c-nom')) $('c-nom').value = J.nomCafe(e);
+    $('c-desc').textContent = `${J.dateTexte(e)} · ${Math.round(m.clientsTotal || m.tasses).toLocaleString('fr-FR')} clients servis · ${Math.round(e.nbAvis).toLocaleString('fr-FR')} avis · notoriété ${Math.round(e.notoriete / 2 * 100)} %`;
+    const cr = J.cibleReputation(e), P = cr.parts;
+    const barre = (nom, v, max, aide) => `<div class="nd"><span>${nom}</span><span class="nd-barre"><i style="width:${Math.max(0, Math.min(100, v / max * 100))}%"></i></span><b>${virg(v, 2)}</b><small>${aide}</small></div>`;
+    $('c-note').innerHTML = `<p>Note actuelle <b>${virg(e.rep, 2)} ★</b> (${Math.round(e.nbAvis)} avis) · un client servi maintenant donnerait <b>${virg(cr.total, 2)} ★</b>${cr.total > e.rep + .02 ? ' ↗' : cr.total < e.rep - .02 ? ' ↘' : ''}</p>`
+      + barre('Goût', P.gout, 1.8, 'grain, machines, moulin, fraîcheur, baristas') + barre('Service', P.service, 1.15, 'assez de monde, peu d’attente, un sourire en salle')
+      + barre('Prix', P.prix, .6, 'pas plus cher que le prix juste') + barre('Ambiance', P.deco, .6, 'déco, harmonie')
+      + `<p class="legende">Chaque client qui repart sans être servi tire la note vers le bas.</p>`;
+    $('c-bilans').innerHTML = e.bilans.length ? '<span></span><span>Recettes</span><span>Dépenses</span><span>Résultat</span>' + [...e.bilans].reverse().map(b => `<b>${b.date.split(' ').slice(0, 2).join(' ')}</b><span>${fmt(b.recettes)}</span><span>${fmt(b.depenses + b.charges)}</span><span class="${b.benefice < 0 ? 'neg' : 'pos'}">${montant(b.benefice)}</span>`).join('') : '<span style="grid-column:1/-1">La première journée n’est pas finie (une journée dure 6 minutes).</span>';
+    const jours = e.bilans.slice(-7), max = Math.max(1, ...jours.map(b => Math.abs(b.benefice)));
+    $('c-graphe').innerHTML = jours.length > 1 ? jours.map(b => `<div class="${b.benefice < 0 ? 'neg' : ''}" style="height:${Math.max(4, Math.abs(b.benefice) / max * 100)}%" title="Jour ${b.jour}"><span>J${b.jour}</span></div>`).join('') : '';
+    $('c-nb-succes').textContent = `${m.succes.length}/${SUCCES.length}`;
+    $('c-succes').innerHTML = SUCCES.map(s => `<div class="${m.succes.includes(s.id) ? 'oui' : 'non'}"><b>${m.succes.includes(s.id) ? '★ ' : ''}${s.nom}</b>${s.desc}</div>`).join('');
+    $('c-histoire').innerHTML = HISTOIRE.filter(h => m.histoire.includes(h.id)).map(h => `<button data-h="${h.id}">${h.titre}</button>`).join('') || '<p class="desc">Rien pour l\'instant.</p>';
+  }
+  $('c-histoire').addEventListener('click', ev => { const b = ev.target.closest('button[data-h]'); if (b) { const h = HISTOIRE.find(x => x.id === b.dataset.h); bulle(h.texte, { titre: h.titre }); } });
+  // ---------- Réglages (gardés sur cet appareil) ----------
+  const CLE_REGLAGES = 'n15x-reglages';
+  const petitAppareil = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 3;
+  let reglages = { son: true, musique: true, gfx: petitAppareil ? 'légers' : 'beaux' };
+  try { Object.assign(reglages, JSON.parse(localStorage.getItem(CLE_REGLAGES) || '{}')); } catch { /* réglages par défaut */ }
+  function appliquerReglages() {
+    regleSon(reglages.son); regleMusique(reglages.musique); scene.qualite(reglages.gfx === 'beaux');
+    $('r-son').textContent = 'Son : ' + (reglages.son ? 'activé' : 'coupé');
+    $('r-mus').textContent = 'Musique : ' + (reglages.musique ? 'activée' : 'coupée');
+    $('r-gfx').textContent = 'Graphismes : ' + reglages.gfx;
+    try { localStorage.setItem(CLE_REGLAGES, JSON.stringify(reglages)); } catch { /* rien */ }
+  }
+  $('r-son').onclick = () => { reglages.son = !reglages.son; appliquerReglages(); sons.clic(); };
+  $('r-mus').onclick = () => { reglages.musique = !reglages.musique; appliquerReglages(); sons.clic(); };
+  $('r-gfx').onclick = () => { reglages.gfx = reglages.gfx === 'beaux' ? 'légers' : 'beaux'; appliquerReglages(); };
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  $('c-installer').hidden = !(ios && !navigator.standalone && !matchMedia('(display-mode: standalone)').matches && !window.PLATEFORME);
+  appliquerReglages();
+
+  $('c-reset').onclick = () => bulle('Tout effacer et recommencer depuis le tout début ? Tes succès seront perdus.', {
+    titre: 'Nouvelle partie ?', boutons: [{ label: 'Non, je garde', cls: 'vert' }, { label: 'Tout effacer', cls: 'rouge', fn: () => jeu.nouvellePartie() }] });
+
+  $('puces').addEventListener('pointerdown', ev => {
+    const p = ev.target.closest('.puce'); if (!p) return;
+    if ('ouvrir' in p.dataset) { jeu.ouvrirCafe(); return; }
+    if ('journal' in p.dataset) { ouvrirJournal(p.dataset.journal || null); return; }
+    if ('goulot' in p.dataset) { const g = J.bilan(E()).goulot; if (g.type === 'station') toucherStation(g.i); else if (g.type === 'stock') { ouvrir('p-stock'); majStock(); } else { ouvrir('p-prix'); $('x-curseur').value = E().prix; majPrix(); } }
+    if ('stock' in p.dataset) { ouvrir('p-stock'); majStock(); }
+    if (p.dataset.panne) toucherStation(+p.dataset.panne);
+  });
+
+  // ---------- Guide : fait pulser ce qu'il faut toucher pour l'objectif en cours ----------
+  let cibleGuide = null;
+  function guider(o, e) {
+    let el = null;
+    if (o && !J.ouvert(e)) {
+      if (o.id === 'commande') el = $('b-stock');
+      else if (['embauche', 'peinture', 'machine', 'equipe3', 'cloison', 'terrasse'].includes(o.id)) el = $('b-travaux');
+    }
+    if (el === cibleGuide) return;
+    cibleGuide?.classList.remove('guide'); cibleGuide = el; el?.classList.add('guide');
+  }
+
+  // ---------- Mise à jour à chaque image ----------
+  const etoilesTxt = r => { const n = Math.round(r * 2) / 2; let h = ''; for (let k = 1; k <= 5; k++) h += n >= k ? '★' : n >= k - .5 ? '⯪' : '<i>★</i>'; return h + ` <small>${virg(r, 2)}</small>`; };
+  function maj(res, dt) {
+    const e = E();
+    revenuLisse += ((res.parSeconde || 0) * 30 - revenuLisse) * Math.min(1, dt * 2);
+    argentAffiche = Math.abs(e.argent - argentAffiche) < .5 ? e.argent : argentAffiche + (e.argent - argentAffiche) * Math.min(1, dt * 7);
+    $('argent').textContent = fmt(argentAffiche);
+    $('argent').classList.toggle('rouge', e.argent < 0);
+    $('ips').textContent = J.ouvert(e) ? '+' + fmt(revenuLisse) + '/h' : `jour ${e.jour}`;
+    const ph = res.parHeure;
+    $('tasses').innerHTML = J.ouvert(e) ? `${Math.round(ph?.ventes || 0)} clients/h${ph && ph.demande > ph.ventes + .5 ? ` · <b class="rouge">${Math.round(ph.demande - ph.ventes)} perdus/h</b>` : ''}<br><span class="moment">${J.meteoDuJour(e).icone} ${heureTexte(e.horloge)} · ${J.dateTexte(e)}</span>`
+      : `Fermé<br><span class="moment">🌙 ${J.dateTexte(e)} · ${e.faillite ? 'faillite' : 'à toi d’ouvrir'}</span>`;
+    majDecision(e);
+    const c = res.cap;
+    STATIONS.forEach((s, i) => {
+      const el = etiquettes[i], [x, y] = scene.projeter(scene.ANCRES[i]), st = e.st[i];
+      el.style.left = x + 'px'; el.style.top = y + 'px';
+      el.querySelector('.niv').textContent = st.panne ? 'PANNE' : i === 0 ? kg(e.stock[e.maison]) : !c ? '' : i === 2 ? `${c.baristas} 👤` : i === 3 ? `${c.enSalle} 👤` : `${Math.round(c.moulin)}/h`;
+      el.querySelector('.auto').classList.toggle('on', !!c && (i === 2 ? c.baristas > 0 : i === 3 ? c.enSalle > 0 : false));
+      el.classList.toggle('goulot', res.goulot.type === 'station' && res.goulot.i === i && !st.panne);
+      el.classList.toggle('panne', !!st.panne);
+    });
+    accUI += dt;
+    if (accUI > .25 || dt === 0) {
+      accUI = 0;
+      const o = J.objectifActuel(e);
+      guider(o, e);
+      $('objectif').hidden = !o;
+      const d = e.defi; $('defi').hidden = !d || !J.ouvert(e);
+      if (d) {
+        const suivi = d.id === 'tasses' || d.id === 'matin';
+        $('defi-txt').textContent = d.texte + (suivi && !d.fini ? ` · ${Math.round(d.progres).toLocaleString('fr-FR')}` : '');
+        $('defi-barre').style.width = (d.fini ? 100 : suivi ? Math.min(100, d.progres / d.cible * 100) : d.rate ? 0 : 50) + '%';
+        $('defi-prime').textContent = d.fini ? 'réussi ✓' : d.rate ? 'raté' : '+' + fmt(d.prime);
+        $('defi').className = 'defi' + (d.fini ? ' fini' : d.rate ? ' rate' : '');
+      }
+      if (o) { $('obj-txt').textContent = o.texte; $('obj-prime').textContent = o.prime ? '+' + fmt(J.primeObjectif(e, o)) : ''; }
+      $('nom').textContent = `${J.nomCafe(e)} · ${J.nomVille(e)}`;
+      $('etoiles').innerHTML = etoilesTxt(e.rep);
+      let puces = '';
+      if (!J.ouvert(e) && !e.faillite) puces += `<span class="puce vert" data-ouvrir>☀️ Ouvrir le café</span><span class="puce" data-journal>📒 Journal du soir</span>`;
+      else if (J.ouvert(e)) puces += `<span class="puce ${res.goulot.type === 'clients' ? '' : 'rouge'}" data-goulot>Limité par : ${res.goulot.nom}</span>`;
+      const kgServi = e.stock[e.maison] / DOSES_SAC;
+      puces += `<span class="puce ${kgServi < 1 ? 'rouge' : kgServi < 3 ? 'miel' : ''}" data-stock>${G[e.maison].court} : ${kg(e.stock[e.maison])}${e.commandes.some(x => x.grain !== 'lait') ? ' · livraison en route' : ''}</span>`;
+      const jl = J.joursAvantLoyer(e); if (jl <= 3) puces += `<span class="puce miel" data-journal="finances">Loyer ${jl === 0 ? 'ce soir' : `dans ${jl} j`} : ${fmt(J.loyerMois(e) + MOIS.assurance)}</span>`;
+      if (e.argent < 0) puces += `<span class="puce rouge" data-journal="finances">Découvert : ${montant(e.argent)}</span>`;
+      const fatigues = e.equipe.filter(p => !p.gerant && (p.fatigue || 0) > .6).length; if (fatigues) puces += `<span class="puce miel" data-journal="equipe">${fatigues} employé${fatigues > 1 ? 's' : ''} épuisé${fatigues > 1 ? 's' : ''}</span>`;
+      const cmax = Math.max(...e.calcaire); if (cmax >= .5) puces += `<span class="puce miel" data-journal="entretien">Calcaire : ${Math.round(cmax * 100)} %</span>`;
+      const fr = J.fraicheur(e, e.maison); if (fr < .9) puces += `<span class="puce miel" data-stock>Grain rassis : −${Math.round((1 - fr) * 100)} % de goût</span>`;
+      if (J.aBuse(e) && e.lait < LAIT.doses * 2) puces += `<span class="puce ${e.lait <= 0 ? 'rouge' : 'miel'}" data-stock>Lait : ${e.lait <= 0 ? 'vide' : virg(e.lait / LAIT.doses) + ' L'}</span>`;
+      e.evts.forEach(v => { puces += `<span class="puce ${v.id === 'cafemax' || v.id === 'nettoyage' ? 'rouge' : 'vert'}">${v.nom} · ${Math.ceil(v.reste / 30 * 60)} min</span>`; });
+      e.st.forEach((s, i) => { if (s.panne) puces += `<span class="puce rouge" data-panne="${i}">Panne : ${STATIONS[i].court}</span>`; });
+      $('puces').innerHTML = puces;
+      majVitesse();
+      $('b-prix-txt').textContent = fmt(J.prixEffectif(e));
+      $('b-stock-txt').textContent = `${virg(J.totalStock(e) / DOSES_SAC, 0)} kg`;
+      $('b-travaux').innerHTML = J.ouvert(e) ? `Journal<small>équipe, comptes</small>` : `Journal<small>du soir</small><span class="pastille">!</span>`;
+      $('b-carnet').innerHTML = `Carnet<small>${e.meta.succes.length} succès</small>`;
+      if (ouvert === 'fiche') majFiche();
+      if (ouvert === 'p-prix') majPrix();
+    }
+    accPanneau += dt;
+    if (accPanneau > 1) { accPanneau = 0; if (ouvert === 'p-stock') majStock(); if (ouvert === 'p-travaux') majTravaux(); if (ouvert === 'p-carnet') majCarnet(); }
+  }
+
+  function objectifAtteint(o) {
+    sons.succes();
+    toast(`Objectif atteint : <b>${o.texte}</b>${o.prime ? ` · +${fmt(o.prime)}` : ''}`, 4500);
+    const el = $('objectif'); el.classList.remove('bravo'); void el.offsetWidth; el.classList.add('bravo');
+  }
+  function finJournee(b) {
+    toast(`19 h, le café ferme. ${Math.round(b.clients)} clients servis, ${Math.round(b.perdus)} repartis. Résultat du jour : <b>${montant(b.benefice)}</b>.`, 6500);
+  }
+  // ---------- Carte de décision ----------
+  let decisionAffichee = null;
+  function majDecision(e) {
+    const d = e.decision;
+    $('decision').hidden = !d;
+    if (!d) { decisionAffichee = null; return; }
+    $('d-temps').textContent = `Sans réponse dans ${Math.ceil(d.reste)} s : « ${d.options[1]} »`;
+    if (decisionAffichee === d) return;
+    decisionAffichee = d; sons.bulle();
+    $('d-txt').textContent = d.texte;
+    const z = $('d-boutons'); z.innerHTML = '';
+    d.options.forEach((o, k) => { const b = document.createElement('button'); b.className = 'btn ' + (k === 0 ? 'vert' : ''); b.textContent = o;
+      b.onclick = () => { const msg = J.choisirDecision(E(), k); if (msg) toast(msg, 5000); sons.clic(); jeu.sauver(); majDecision(E()); }; z.appendChild(b); });
+  }
+  function ouvrirJournal(o) { if (o) onglet = o; ouvrir('p-travaux'); majTravaux(); }
+  return { maj, toast, bulle, pop, parole, fermer, toucherStation, objectifAtteint, finJournee, ouvrirJournal, majVitesse };
+}
