@@ -1,0 +1,17 @@
+{
+  "name": "Le Petit Grain",
+  "short_name": "Petit Grain",
+  "description": "Reprends le café de mamie, améliore-le pièce par pièce et fais-en une chaîne connue.",
+  "lang": "fr",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F6EBDD",
+  "theme_color": "#C8874A",
+  "icons": [
+    { "src": "assets/images/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/images/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

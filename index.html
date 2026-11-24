@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- iPhone : installable depuis Safari (Partager → Sur l'écran d'accueil), en plein écran, sous l'encoche -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Petit Grain">
+<meta name="description" content="Le Petit Grain : reprends le café de mamie, améliore-le pièce par pièce et fais-en une chaîne connue. Un idle tycoon en 3D.">
+<title>Le Petit Grain</title>
+<meta name="theme-color" content="#C8874A">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="assets/images/icone-192.png">
+<link rel="apple-touch-icon" href="assets/images/icone-180.png">
+<!-- Polices et moteur 3D embarqués (vendor/, voir tools/embarquer.mjs) : le jeu ne dépend d'aucun site extérieur -->
+<link href="vendor/polices/polices.css" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/build/three.module.js",
+  "three/addons/": "./vendor/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="chargement">Le Petit Grain ouvre ses portes…</div>
+<script>
+  // Le jeu ne peut pas tourner en ouvrant le fichier directement : on l'explique au lieu de rester bloqué
+  (function () {
+    var el = document.getElementById('chargement');
+    var aide = 'Pour jouer : lance « node serve.mjs » dans le dossier du jeu, puis ouvre http://localhost:5180';
+    if (location.protocol === 'file:') { el.textContent = 'Le jeu ne s’ouvre pas comme un simple fichier. ' + aide; return; }
+    setTimeout(function () {
+      if (!el.classList.contains('fini')) el.textContent = 'Le café met du temps à ouvrir… Si rien ne bouge, recharge la page.';
+    }, 10000);
+  })();
+</script>
+<div id="accueil" hidden>
+  <div class="accueil-carte">
+    <img src="assets/images/accueil.jpg" alt="Le café Le Petit Grain en fin de journée, sa terrasse et sa guirlande allumée">
+    <h1>Le Petit Grain</h1>
+    <p>Reprends le vieux café de mamie Odette et fais-en le meilleur café de la ville.</p>
+    <button class="btn" id="jouer">Jouer</button>
+    <small id="accueil-info"></small>
+  </div>
+</div>
+<div id="scene"></div>
+<div id="labels"></div>
+
+<div class="hud">
+  <div class="carte-argent">
+    <div><div class="nom" id="nom">Le Petit Grain · Lyon</div><b id="argent">0 €</b></div>
+    <div class="droite">
+      <div class="etoiles" id="etoiles"></div>
+      <div class="ips" id="ips">+0 €/s</div>
+      <small id="tasses">0 tasse/min</small>
+    </div>
+  </div>
+  <div class="puces" id="puces"></div>
+  <div class="objectif" id="objectif" hidden><span class="cible">🎯</span><span id="obj-txt"></span><b id="obj-prime"></b></div>
+  <div class="defi" id="defi" hidden><span class="d-ico">⚡</span><div class="d-corps"><span id="defi-txt"></span><div class="d-barre"><i id="defi-barre"></i></div></div><b id="defi-prime"></b></div>
+  <!-- Les notifications s'affichent en haut, sous l'objectif : elles ne cachent jamais les boutons et ne captent pas le doigt -->
+  <div id="toast" class="cache" aria-live="polite"></div>
+</div>
+
+<div class="bas">
+  <div class="carte-decision" id="decision" hidden><p id="d-txt"></p><div class="boutons" id="d-boutons"></div><small id="d-temps"></small></div>
+  <div class="panneau" id="fiche" hidden>
+    <div class="tete">
+      <div><h3 id="f-nom">Station</h3><p class="desc" id="f-desc"></p></div>
+      <button class="fermer" data-fermer aria-label="Fermer">✕</button>
+    </div>
+    <div class="stats">
+      <div class="stat"><small>Niveau</small><b id="f-niv">1</b></div>
+      <div class="stat"><small>Débit</small><b id="f-debit">0</b></div>
+    </div>
+    <p class="alerte" id="f-alerte"></p>
+    <div class="boutons">
+      <button class="btn" id="f-up">Former l'équipe<small id="f-up-cout"></small></button>
+      <button class="btn vert" id="f-mgr">Manager<small id="f-mgr-cout"></small></button>
+    </div>
+  </div>
+
+  <div class="panneau" id="p-stock" hidden>
+    <div class="tete">
+      <div><h3>Réserve &amp; grains</h3><p class="desc" id="s-desc"></p></div>
+      <button class="fermer" data-fermer aria-label="Fermer">✕</button>
+    </div>
+    <div class="jauge"><span id="s-jauge"></span></div>
+    <div id="s-liste"></div>
+  </div>
+
+  <div class="panneau" id="p-prix" hidden>
+    <div class="tete">
+      <div><h3>Prix de la tasse</h3><p class="desc">Trop cher, les clients fuient et la réputation baisse. Pas assez cher, tu travailles pour rien.</p></div>
+      <button class="fermer" data-fermer aria-label="Fermer">✕</button>
+    </div>
+    <div class="prix-grand" id="x-prix">1,20 €</div>
+    <input type="range" id="x-curseur" min="0.5" max="8" step="0.05" value="1.2" aria-label="Prix de la tasse">
+    <div class="regle"><span>0,50 €</span><span id="x-juste">prix juste</span><span>8,00 €</span></div>
+    <div class="stats" style="margin-top:10px">
+      <div class="stat"><small>Clients</small><b id="x-clients">0</b></div>
+      <div class="stat"><small>Marge / tasse</small><b id="x-marge">0</b></div>
+    </div>
+    <p class="alerte" id="x-avis"></p>
+  </div>
+
+  <div class="panneau" id="p-travaux" hidden>
+    <div class="tete">
+      <div><h3 id="t-titre">Journal du soir</h3><p class="desc" id="t-desc"></p></div>
+      <button class="fermer" data-fermer aria-label="Fermer">✕</button>
+    </div>
+    <div id="t-liste"></div>
+  </div>
+
+  <div class="panneau" id="p-carnet" hidden>
+    <div class="tete">
+      <div><h3>Carnet de mamie</h3><p class="desc" id="c-desc"></p></div>
+      <button class="fermer" data-fermer aria-label="Fermer">✕</button>
+    </div>
+    <h5>Ta note</h5>
+    <div class="note-detail" id="c-note"></div>
+    <h5>Franchise</h5>
+    <div class="franchise" id="c-franchise"></div>
+    <div id="c-heritage-bloc"><h5>Héritage <small id="c-etoiles"></small></h5><div id="c-heritage"></div></div>
+    <div id="c-reseau-bloc"><h5>Ton réseau</h5><div class="reseau" id="c-reseau"></div></div>
+    <h5>Derniers jours</h5>
+    <div class="graphe" id="c-graphe"></div>
+    <div class="bilans" id="c-bilans"></div>
+    <h5>Succès <small id="c-nb-succes"></small></h5>
+    <div class="succes" id="c-succes"></div>
+    <h5>Souvenirs</h5>
+    <div class="histoire" id="c-histoire"></div>
+    <h5>Réglages</h5>
+    <p class="installer" id="c-installer" hidden>📱 Pour l’avoir comme une appli : touche <b>Partager</b> (le carré avec la flèche), puis <b>« Sur l’écran d’accueil »</b>.</p>
+    <div class="boutons reglages trois"><button class="btn mini vert" id="r-son">Son : activé</button><button class="btn mini vert" id="r-mus">Musique : activée</button><button class="btn mini vert" id="r-gfx">Graphismes : beaux</button></div>
+    <button class="lien" id="c-reset">Recommencer une partie de zéro</button>
+  </div>
+
+  <div class="boutons nav">
+    <button class="btn vert" id="b-stock">Réserve<small id="b-stock-txt">grains</small></button>
+    <button class="btn" id="b-prix">Prix<small id="b-prix-txt">1,20 €</small></button>
+    <button class="btn brun" id="b-travaux">Journal<small>le soir</small></button>
+    <button class="btn prune" id="b-carnet">Carnet<small id="b-carnet-txt">0 succès</small></button>
+    <button class="btn miel" id="rush">Rush<small id="rush-txt">×2 · 30 s</small></button>
+  </div>
+</div>
+
+<div id="bulle" hidden>
+  <div class="qui"><span class="avatar">👵</span><span id="bulle-titre">Mamie Odette</span></div>
+  <p id="bulle-txt"></p>
+  <div class="boutons un" id="bulle-boutons"></div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
