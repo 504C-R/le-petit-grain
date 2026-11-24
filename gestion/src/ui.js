@@ -185,7 +185,14 @@ export function creerUI({ jeu, scene }) {
   });
 
   // ---------- Journal du soir (en onglets) ----------
-  const ONGLETS = [['bilan', 'Bilan'], ['carte', 'Carte'], ['equipe', 'Équipe'], ['planning', 'Planning'], ['clients', 'Clients'], ['finances', 'Finances'], ['catalogue', 'Catalogue'], ['entretien', 'Entretien'], ['travaux', 'Travaux']];
+  // Le journal est rangé en 5 rubriques simples ; une rubrique peut avoir plusieurs pages
+  const RUBRIQUES = [
+    { icone: '📋', nom: 'Ma journée', pages: [['bilan', 'Bilan du jour']] },
+    { icone: '☕', nom: 'Carte & clients', pages: [['carte', 'La carte'], ['clients', 'Fidélité et pub']] },
+    { icone: '👥', nom: 'Équipe', pages: [['equipe', 'Les employés'], ['planning', 'Le planning']] },
+    { icone: '🛠️', nom: 'Le café', pages: [['travaux', 'Travaux et déco'], ['catalogue', 'Matériel'], ['entretien', 'Entretien']] },
+    { icone: '💶', nom: 'Comptes', pages: [['finances', 'Comptes et banque']] },
+  ];
   const ICONES_CAT = { 'Déco': '🎨', 'Salle': '🪑', 'Réserve': '📦', 'Bar': '☕', 'Agrandir': '🏗️', 'Équipe': '🎓', 'Confort': '🔥' };
   const ICONES_FOURN = { grossiste: '🏪', artisan: '🔥', importateur: '🚢' };
   let onglet = 'bilan', poste = 0, dernierHtml = '';
@@ -535,7 +542,10 @@ export function creerUI({ jeu, scene }) {
     $('t-desc').textContent = soir ? `${J.dateTexte(e)}, le café est fermé. Prépare demain, puis ouvre le café.`
       : `Le café est ouvert (${heureTexte(e.horloge)}). Tu peux tout regarder ; recrutement, achats et commandes normales se font le soir.`;
     const nb = nbAchetables(e);
-    let h = `<div class="onglets">` + ONGLETS.map(([id, nom]) => `<button class="onglet${id === onglet ? ' choisi' : ''}" data-onglet="${id}">${nom}${nb[id] ? `<span class="pastille">${nb[id]}</span>` : ''}</button>`).join('') + `</div>`;
+    const rub = RUBRIQUES.find(r => r.pages.some(p => p[0] === onglet)) || RUBRIQUES[0];
+    let h = `<div class="onglets">` + RUBRIQUES.map(r => { const n = r.pages.reduce((s, p) => s + (nb[p[0]] || 0), 0);
+      return `<button class="onglet rubrique${r === rub ? ' choisi' : ''}" data-onglet="${r.pages[0][0]}"><span class="ico">${r.icone}</span>${r.nom}${n ? `<span class="pastille">${n}</span>` : ''}</button>`; }).join('') + `</div>`;
+    if (rub.pages.length > 1) h += `<div class="sous-onglets">` + rub.pages.map(([id, nom]) => `<button class="${id === onglet ? 'choisi' : ''}" data-onglet="${id}">${nom}${nb[id] ? ` <span class="pastille">${nb[id]}</span>` : ''}</button>`).join('') + `</div>`;
     if (soir && !e.faillite) h += `<button class="btn vert" data-ouvrir style="width:100%;margin:2px 0 8px">☀️ Ouvrir le café (7 h)</button>`;
     const f = { carte: ongletCarte, clients: ongletClients, catalogue: ongletCatalogue, equipe: ongletEquipe, planning: ongletPlanning, finances: ongletFinances, entretien: ongletEntretien, travaux: ongletTravaux }[onglet] || ongletBilan;
     h += f(e, soir);
@@ -679,7 +689,7 @@ export function creerUI({ jeu, scene }) {
     const p = ev.target.closest('.puce'); if (!p) return;
     if ('ouvrir' in p.dataset) { jeu.ouvrirCafe(); return; }
     if ('journal' in p.dataset) { ouvrirJournal(p.dataset.journal || null); return; }
-    if ('goulot' in p.dataset) { const g = J.bilan(E()).goulot; if (g.type === 'station') toucherStation(g.i); else if (g.type === 'stock') { ouvrir('p-stock'); majStock(); } else { ouvrir('p-prix'); $('x-curseur').value = E().prix; majPrix(); } }
+    if ('goulot' in p.dataset) { const c = conseilGoulot(E(), J.bilan(E()).goulot); if (c.journal) ouvrirJournal(c.journal); else if (c.stock) { ouvrir('p-stock'); majStock(); } else { ouvrir('p-prix'); $('x-curseur').value = E().prix; majPrix(); } }
     if ('stock' in p.dataset) { ouvrir('p-stock'); majStock(); }
     if (p.dataset.panne) toucherStation(+p.dataset.panne);
   });
@@ -699,7 +709,7 @@ export function creerUI({ jeu, scene }) {
     ],
     soir: [
       ['#t-liste .journal-bilan', 'Le bilan de ta journée : ce que tu as encaissé, ce que tu as dépensé, et le résultat.'],
-      ['#t-liste .onglets', 'Chaque onglet gère une partie du café : la Carte (tes produits et leurs prix), l’Équipe, le Planning, les Clients (fidélité, publicité), les Finances (et leurs courbes)…'],
+      ['#t-liste .onglets', 'Le journal est rangé en cinq rubriques : ta journée, la carte et les clients, l’équipe, le café (travaux, matériel) et les comptes. Une pastille rouge signale ce qui demande ton attention.'],
       ['#t-liste .commande-demain', 'Le plus urgent chaque soir : le grain pour demain. « Pour demain » commande juste ce qu’il faut, livré à 7 h.'],
       ['#t-liste [data-ouvrir]', 'Quand tout est prêt, ouvre le café. La nuit attend que tu aies fini : prends ton temps.'],
     ],
@@ -724,6 +734,20 @@ export function creerUI({ jeu, scene }) {
     etape();
   }
   $('c-tuto').onclick = () => { fermer(); tutoriel('jour'); };
+
+  // ---------- Ce qui freine les ventes, dit simplement, avec l'endroit où agir ----------
+  function conseilGoulot(e, g) {
+    if (g.type === 'stock') return { texte: 'Plus de grain ! Commande en urgence', cls: 'rouge', stock: true };
+    if (g.type === 'clients') return { texte: 'Tout roule : le café pourrait servir plus de monde', cls: 'vert', prix: true };
+    const c = g.cause;
+    if (c === 'bar' && /personne/.test(g.nom)) return { texte: 'Personne au bar ! Planning', cls: 'rouge', journal: 'planning' };
+    if (c === 'bar' && /attend/.test(g.nom)) return { texte: 'Une machine attend un barista : embauche', cls: 'rouge', journal: 'equipe' };
+    if (c === 'bar') return { texte: 'Le bar ne suit pas : machine plus rapide', cls: 'miel', journal: 'catalogue' };
+    if (c === 'moulin') return { texte: 'Le moulin est trop lent : nouveau moulin', cls: 'miel', journal: 'catalogue' };
+    if (c === 'salle') return { texte: 'Le service en salle déborde : quelqu’un de plus', cls: 'miel', journal: 'equipe' };
+    if (c === 'places') return { texte: 'Toutes les tables sont prises : ajoute des tables', cls: 'miel', journal: 'travaux' };
+    return { texte: g.nom, cls: '' };
+  }
 
   // ---------- Guide : fait pulser ce qu'il faut toucher pour l'objectif en cours ----------
   let cibleGuide = null;
@@ -781,7 +805,7 @@ export function creerUI({ jeu, scene }) {
       $('etoiles').innerHTML = etoilesTxt(e.rep);
       let puces = '';
       if (!J.ouvert(e) && !e.faillite) puces += `<span class="puce vert" data-ouvrir>☀️ Ouvrir le café</span><span class="puce" data-journal>📒 Journal du soir</span>`;
-      else if (J.ouvert(e)) puces += `<span class="puce ${res.goulot.type === 'clients' ? '' : 'rouge'}" data-goulot>Limité par : ${res.goulot.nom}</span>`;
+      else if (J.ouvert(e)) { const c = conseilGoulot(e, res.goulot); puces += `<span class="puce ${c.cls}" data-goulot>${c.texte} ›</span>`; }
       const kgServi = e.stock[e.maison] / DOSES_SAC;
       puces += `<span class="puce ${kgServi < 1 ? 'rouge' : kgServi < 3 ? 'miel' : ''}" data-stock>${G[e.maison].court} : ${kg(e.stock[e.maison])}${e.commandes.some(x => x.grain !== 'lait') ? ' · livraison en route' : ''}</span>`;
       const jl = J.joursAvantLoyer(e); if (jl <= 3) puces += `<span class="puce miel" data-journal="finances">Loyer ${jl === 0 ? 'ce soir' : `dans ${jl} j`} : ${fmt(J.loyerMois(e) + MOIS.assurance)}</span>`;

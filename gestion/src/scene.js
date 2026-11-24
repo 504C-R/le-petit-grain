@@ -8,7 +8,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { nomCafe, prixEffectif, neige, murActuel, solActuel, formuleDuMoment, a, tierMachine, nbMachines, tierMoulin, debitStation, debitMax, panier, pleut, choisirHabitue, cafemaxOuvert, prixProduit, produitActif, CATALOGUE_CARTE, ouvert, avanceeJournee, CATALOGUE_MACHINES } from './game.js';
+import { nomCafe, prixEffectif, neige, murActuel, solActuel, formuleDuMoment, a, tierMachine, nbMachines, tierMoulin, debitStation, debitMax, panier, pleut, choisirHabitue, cafemaxOuvert, capaciteReserve, prixProduit, produitActif, CATALOGUE_CARTE, ouvert, avanceeJournee, CATALOGUE_MACHINES } from './game.js';
 import { G, VILLES, INFOS_VILLES } from './data.js';
 
 // Modèles 3D générés par Blender (tools/blender/modeles.py). Si un fichier manque, on garde les formes simples.
@@ -61,13 +61,15 @@ class Marcheur {
   membres(marche) {
     const mb = this.o.userData.membres; if (!mb || !mb.jg) return;
     const a = marche ? Math.sin(this.t * 11) * .55 : 0;
-    const jambes = this.assis ? -1.45 : a;
-    mb.jg.rotation.x = jambes; mb.jd.rotation.x = this.assis ? -1.45 : -a;
+    const jambes = this.assis ? -1.5 : a;
+    mb.jg.rotation.x = jambes; mb.jd.rotation.x = this.assis ? -1.5 : -a;
+    // genoux : pliés à angle droit assis, légèrement en marchant (jambe qui revient)
+    if (mb.kg) { mb.kg.rotation.x = this.assis ? 1.5 : Math.max(0, -a) * .9; mb.kd.rotation.x = this.assis ? 1.5 : Math.max(0, a) * .9; }
     if (mb.bg) { mb.bg.rotation.x = this.assis ? -.5 : -a * .8; mb.bd.rotation.x = this.assis ? -.5 : a * .8; }
   }
   maj(dt, facteur = 1) {
     const o = this.o;
-    if (this.attente > 0) { this.attente -= dt * Math.max(facteur, .05); o.position.y = this.assis ? .1 : 0; this.membres(false); return; }
+    if (this.attente > 0) { this.attente -= dt * Math.max(facteur, .05); o.position.y = this.assis ? (o.userData.realiste ? -.42 : .1) : 0; this.membres(false); return; }
     const p = this.chemin[0];
     if (!p) { o.position.y = 0; this.membres(false); return; }
     this.assis = false;
@@ -282,7 +284,13 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   for (let z = -3.5; z <= 3.5; z += .5) put(rbox(.2, 2.6, .05, 0x9A7550, .02), 2.15, 1.3, z, D.cloison);
   put(new THREE.Mesh(new THREE.PlaneGeometry(1.6, .8), new THREE.MeshBasicMaterial({ map: texTravaux })), 2.05, 1.6, .5, D.cloison).rotation.y = -Math.PI / 2;
   D.cartons = grp(scene);
-  [[3.3, -2.5, .9], [4.2, -2.2, .7], [3.6, 1.8, .8], [4.6, 2.8, .6], [3.8, -2.4, .5]].forEach(([x, z, s], k) => put(rbox(s, s * .8, s, k % 2 ? 0xC9A27A : 0xB98E62, .03), x, s * .4 + (k === 4 ? .7 : 0), z, D.cartons));
+  // Cartons de déménagement : carton brun, bande de scotch sur le dessus et un rabat
+  [[3.3, -2.5, .9], [4.2, -2.2, .7], [3.6, 1.8, .8], [4.6, 2.8, .6], [3.8, -2.4, .5]].forEach(([x, z, s], k) => {
+    const y = s * .4 + (k === 4 ? .7 : 0), c = grp(D.cartons, x, y, z); c.rotation.y = (k * 1.3) % .5 - .25;
+    put(rbox(s, s * .8, s, k % 2 ? 0xB89470 : 0xA9825C, .01), 0, 0, 0, c);
+    put(rbox(.09, .006, s + .01, 0xD8C8A4, .002), 0, s * .4 + .003, 0, c);
+    put(rbox(s * .35, .004, .2, 0xE9E2D4, .002), s * .2, s * .4 + .004, s * .25, c);   // étiquette
+  });
   function plante(x, z, s, parent) {
     const g = grp(parent, x, 0, z);
     const p = modele('plante'); if (p) { p.scale.setScalar(s); g.add(p); return; }
@@ -308,7 +316,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   [[0xE8B54A, -2.3], [0x8FA98B, -1.7], [0xD9695F, -1.1], [0xFFFDF8, -.5]].forEach(([c, z]) => put(rbox(.32, .42, .32, c, .1), -5.75, 2.26, z, D.etagere));
 
   // ---- Stations ----
-  const ANCRES = [new THREE.Vector3(-5.0, 1.25, -1.2), new THREE.Vector3(-2.4, 2.3, -3.2), new THREE.Vector3(.4, 2.45, -1.8), new THREE.Vector3(-2.8, 1.6, 2.2)];
+  const ANCRES = [new THREE.Vector3(-4.85, 1.9, -2.8), new THREE.Vector3(-2.4, 2.3, -3.2), new THREE.Vector3(.4, 2.45, -1.8), new THREE.Vector3(-2.8, 1.6, 2.2)];
   const groupes = [0, 1, 2, 3].map(i => { const g = new THREE.Group(); g.userData.station = i; scene.add(g); return g; });
 
   const PANTALONS = [0x5C4A3E, 0x3E4A5C, 0x2E2A2A, 0x6E86A8, 0x8A6A55, 0x4A5A3E, 0xB9A07A];
@@ -318,7 +326,8 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
       ombreContact(p);
       const t = p.getObjectByName('tablier'); if (t) t.visible = tablier;
       const n = k => p.getObjectByName(k);
-      p.userData.membres = { bg: n('bras_g'), bd: n('bras_d'), jg: n('jambe_g'), jd: n('jambe_d'), tete: n('tete') };
+      p.userData.membres = { bg: n('bras_g'), bd: n('bras_d'), jg: n('jambe_g'), jd: n('jambe_d'), kg: n('genou_g'), kd: n('genou_d'), tete: n('tete') };
+      p.userData.realiste = !!n('genou_g');
       return p;
     }
     const g = new THREE.Group();
@@ -341,14 +350,43 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     return g;
   }
 
-  // Réserve
-  D.palette = put(rbox(1.7, .14, 1.3, C.bois, .03), -4.8, .07, -2.9, groupes[0]);
-  D.arriere = grp(groupes[0]);
-  put(rbox(.5, 2.4, 2.2, C.bois, .04), -5.7, 1.2, -2.6, D.arriere);
-  [.5, 1.2, 1.9].forEach(y => put(rbox(.7, .08, 2.2, C.caramelF, .02), -5.5, y, -2.6, D.arriere));
-  [[.62, -3.2], [.62, -2.0], [1.32, -2.6], [2.02, -3.1]].forEach(([y, z]) => put(sac(0xB9A07A), -5.45, y, z, D.arriere));
-  const sacsPile = [[-5.15, .14, -3.15], [-4.45, .14, -3.15], [-5.15, .14, -2.6], [-4.45, .14, -2.6], [-4.8, .56, -2.9], [-4.8, .98, -2.9]]
-    .map(([x, y, z]) => put(sac(), x, y * (M.sac ? 1.15 : 1), z, groupes[0]));
+  // ---- La réserve : une vraie pièce dans le coin du fond, sol en béton, murets (coupés pour qu'on voie dedans),
+  // une porte côté moulin et des étagères métalliques. Les sacs posés suivent le remplissage réel de la réserve.
+  const RES = { x0: -6.0, x1: -3.7, z0: -3.95, z1: -1.6, porte: [-3.3, -2.5] };
+  const reserve = grp(groupes[0]);
+  const solReserve = put(new THREE.Mesh(new THREE.PlaneGeometry(RES.x1 - RES.x0, RES.z1 - RES.z0), mat(0x8F8880, { roughness: .95 })), (RES.x0 + RES.x1) / 2, .006, (RES.z0 + RES.z1) / 2, reserve);
+  solReserve.rotation.x = -Math.PI / 2; solReserve.receiveShadow = true;
+  const enduit = 0xE3D6C4, chapeau = 0x6B4A33, HM = 1.0;
+  const muret = (x, z, lx, lz) => { put(rbox(lx, HM, lz, enduit, .015), x, HM / 2, z, reserve); put(rbox(lx + .04, .05, lz + .04, chapeau, .01), x, HM + .025, z, reserve); };
+  muret((RES.x0 + RES.x1) / 2 + .05, RES.z1, RES.x1 - RES.x0 + .1, .1);                                  // muret de façade
+  muret(RES.x1, (RES.z0 + RES.porte[0]) / 2, .1, RES.porte[0] - RES.z0);                                  // côté, avant la porte
+  muret(RES.x1, (RES.porte[1] + RES.z1) / 2, .1, RES.z1 - RES.porte[1]);                                  // côté, après la porte
+  [RES.porte[0], RES.porte[1]].forEach(z => put(rbox(.12, 2.05, .1, chapeau, .02), RES.x1, 1.025, z, reserve));   // montants de la porte
+  put(rbox(.12, .1, RES.porte[1] - RES.porte[0] + .1, chapeau, .02), RES.x1, 2.05, (RES.porte[0] + RES.porte[1]) / 2, reserve);
+  // la plaque « Réserve » sur le muret de façade
+  const plaque = put(new THREE.Mesh(new THREE.PlaneGeometry(.7, .18), new THREE.MeshStandardMaterial({ map: texture(256, 64, (g, w, h) => {
+    g.fillStyle = '#2E2622'; g.fillRect(0, 0, w, h); g.strokeStyle = '#B08A4A'; g.lineWidth = 3; g.strokeRect(4, 4, w - 8, h - 8);
+    g.fillStyle = '#E9DFCF'; g.font = '600 34px Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('RÉSERVE', w / 2, h / 2 + 2);
+  }), roughness: .6 })), -4.85, .72, RES.z1 + .056, reserve);
+  // étagère métallique (montants, tablettes) : base le long du mur du fond, une deuxième avec l'arrière-boutique, le long du mur de gauche
+  const metal = 0x5C5F63, tablette = 0x8A8F94;
+  function etagere(parent, cx, cz, long, prof, tourne) {
+    const g = grp(parent, cx, 0, cz); if (tourne) g.rotation.y = Math.PI / 2;
+    for (const dx of [-long / 2, long / 2]) for (const dz of [-prof / 2, prof / 2]) put(rbox(.04, 1.8, .04, metal, .008), dx, .9, dz, g);
+    [.1, .7, 1.3].forEach(y => put(rbox(long, .03, prof, tablette, .006), 0, y, 0, g));
+    return g;
+  }
+  etagere(reserve, -4.85, -3.68, 1.8, .48, false);
+  D.arriere = grp(groupes[0]); etagere(D.arriere, -5.68, -2.55, 1.5, .46, true);
+  D.palette = grp(groupes[0]);
+  put(rbox(1.2, .13, .85, 0xA88A64, .01), -4.75, .065, -2.3, D.palette);
+  [-5.2, -4.75, -4.3].forEach(x => put(rbox(.1, .1, .85, 0x8A6E4E, .01), x, .05, -2.3, D.palette));
+  // Emplacements de sacs : étagère du fond (9), palette (8), étagère de gauche (6)
+  const placesSacs = [];
+  [.13, .73, 1.33].forEach(y => [-5.45, -4.85, -4.25].forEach(x => placesSacs.push({ x, y, z: -3.68, rot: 0, quand: () => true })));
+  [.13, .41].forEach(y => [[-5.03, -2.5], [-4.47, -2.5], [-5.03, -2.1], [-4.47, -2.1]].forEach(([x, z]) => placesSacs.push({ x, y, z, rot: 0, quand: e => a(e, 'palette') })));
+  [.73, 1.33, .13].forEach(y => [-2.9, -2.2].forEach(z => placesSacs.push({ x: -5.68, y, z, rot: Math.PI / 2, quand: e => a(e, 'arriere') })));
+  const sacsPile = placesSacs.map(p => { const s = put(sac(), p.x, p.y, p.z, groupes[0]); s.rotation.y = p.rot + (Math.random() - .5) * .12; s.scale.setScalar(M.sac ? .9 : .8); s.userData.place = p; return s; });
 
   // Moulin : manivelle → électrique → torréfacteur
   const moulin = groupes[1];
@@ -629,9 +667,22 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     }
   }
 
+  // Les chapeaux et lunettes sont dessinés pour l'ancienne tête (centre à 1,03, rayon 0,215) : sur le personnage réaliste,
+  // un groupe les ramène à la taille et à la hauteur de la nouvelle tête (centre à 1,655, environ deux fois plus petite)
+  function groupeTete(p) {
+    const g = grp(p);
+    if (p.userData.realiste) { const s = .48; g.scale.set(s, s * 1.08, s); g.position.y = 1.66 - 1.03 * s * 1.08; }
+    return g;
+  }
   // Accessoires des habitués, posés sur la tête
   function accessoire(p, type) {
-    const g = grp(p);
+    if (type === 'parapluie' && p.userData.realiste) {   // tenu à bout de bras, au-dessus de la tête
+      const g = grp(p);
+      put(cyl(.01, .01, .9, 0x2E2622, 6), .2, 1.55, .08, g);
+      put(ombre(new THREE.Mesh(new THREE.ConeGeometry(.55, .22, 12, 1, true), mat(pick([0x2E3046, 0x3A3633, 0x5A2E2E, 0x4A5A4A]), { side: THREE.DoubleSide }))), .2, 2.05, .08, g);
+      return g;
+    }
+    const g = groupeTete(p);
     if (type === 'beret') { const b = put(sph(.2, 0x2E3046), 0, 1.16, -.01, g); b.scale.set(1.05, .35, 1.05); b.rotation.z = .25; put(sph(.025, 0x2E3046), .02, 1.24, 0, g); }
     if (type === 'casque') {
       const arc = put(new THREE.Mesh(new THREE.TorusGeometry(.215, .025, 8, 24, Math.PI), mat(0x2B2B2B)), 0, 1.0, 0, g); arc.castShadow = true;
@@ -655,10 +706,11 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   }
 
   // ---- Agents ----
-  const coursier = new Marcheur(put(perso(C.miel, C.cafe, { tablier: true }), -4.0, 0, -1.9), 1.6);
-  const sacPorte = sac(); sacPorte.scale.setScalar(.7); put(sacPorte, 0, .55, .25, coursier.o); sacPorte.visible = false;
+  const coursier = new Marcheur(put(perso(C.miel, C.cafe, { tablier: true }), -3.45, 0, -2.9), 1.6);
+  // le coursier porte le sac sur l'épaule
+  const sacPorte = sac(); sacPorte.scale.setScalar(.62); put(sacPorte, .1, 1.46, -.02, coursier.o); sacPorte.rotation.z = -.25; sacPorte.visible = false;
   const serveur = new Marcheur(put(perso(C.framboise, CHEVEUX[3], { tablier: true }), -.9, 0, -.7), 2.0);
-  const plateau = put(cyl(.22, .22, .03, C.lait, 18), 0, .78, .3, serveur.o); plateau.visible = false;
+  const plateau = put(cyl(.2, .2, .02, 0x3A3633, 18), .1, 1.08, .32, serveur.o); plateau.visible = false;
   let clients = [], livreurs = [];
   let etat = null;
   const entree = () => etat && a(etat, 'terrasse') ? { x: 1.9, z: 7.4 } : { x: 1.0, z: 4.5 };
@@ -1089,15 +1141,16 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   }
 
   // ---- Personnages : coiffures, chapeaux, tenues selon la météo, sacs, tailles ----
-  const COULEURS_TENUES = [C.framboise, C.miel, C.sauge, 0x6E86A8, 0xB48EC9, 0x5E9CA0, 0xE59A6B, C.lait, 0x3E3A3A];
+  const COULEURS_TENUES = [0x7A3B36, 0xB0894A, 0x5E6E58, 0x3E4C66, 0x6B5A78, 0x3F5E60, 0x9A6A48, 0xE6DDD0, 0x2E2A2A];
   function habiller(p, cheveux, e) {
-    const g = grp(p), r = Math.random, met = e.meteo;
+    const g = groupeTete(p), corps = grp(p), vrai = !!p.userData.realiste, r = Math.random, met = e.meteo;
     const froid = met === 'froid', soleil = met === 'soleil' || met === 'chaleur';
     if (froid && r() < .7) {
       // bonnet à pompon et écharpe
       const c = pick(COULEURS_TENUES), b = put(new THREE.Mesh(new THREE.SphereGeometry(.215, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat(c)), 0, 1.05, 0, g); b.castShadow = true;
       put(sph(.06, C.lait), 0, 1.27, 0, g);
-      put(new THREE.Mesh(new THREE.TorusGeometry(.17, .05, 8, 18), mat(pick(COULEURS_TENUES))), 0, .8, 0, g).rotation.x = Math.PI / 2;
+      if (vrai) put(new THREE.Mesh(new THREE.TorusGeometry(.075, .032, 8, 18), mat(pick(COULEURS_TENUES))), 0, 1.46, 0, corps).rotation.x = Math.PI / 2;   // écharpe
+      else put(new THREE.Mesh(new THREE.TorusGeometry(.17, .05, 8, 18), mat(pick(COULEURS_TENUES))), 0, .8, 0, g).rotation.x = Math.PI / 2;
     } else {
       const style = r();
       if (style < .18) put(sph(.09, cheveux), 0, 1.2, -.1, g);                                              // chignon
@@ -1107,9 +1160,12 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
       else if (soleil && style < .8) { put(cyl(.34, .34, .02, 0xE8D29A, 20), 0, 1.16, 0, g); put(cyl(.17, .2, .14, 0xE8D29A, 16), 0, 1.24, 0, g); put(cyl(.205, .205, .04, C.framboise, 16), 0, 1.19, 0, g); }   // chapeau de paille
     }
     if (soleil && r() < .5) [-.075, .075].forEach(x => put(rbox(.11, .06, .02, 0x1E1E1E, .02), x, 1.01, .2, g));   // lunettes de soleil
-    if (r() < .25) { const s = put(rbox(.2, .26, .07, pick(COULEURS_TENUES), .03), .27, .5, 0, g); s.rotation.z = .08; put(cyl(.01, .01, .3, C.cafe, 6), .27, .76, 0, g).rotation.z = .4; }   // sac en toile
-    // tailles variées (et parfois un enfant)
-    const enfant = r() < .08, h = enfant ? .68 : .92 + r() * .18, l = enfant ? .72 : .94 + r() * .14;
+    if (r() < .25) {   // sac en bandoulière
+      if (vrai) { const s = put(rbox(.24, .28, .07, pick(COULEURS_TENUES), .03), .27, .98, 0, corps); s.rotation.z = .06; put(cyl(.008, .008, .62, 0x2E2622, 6), .1, 1.22, 0, corps).rotation.z = .55; }
+      else { const s = put(rbox(.2, .26, .07, pick(COULEURS_TENUES), .03), .27, .5, 0, g); s.rotation.z = .08; put(cyl(.01, .01, .3, C.cafe, 6), .27, .76, 0, g).rotation.z = .4; }
+    }
+    // tailles variées (de 1,60 m à 1,85 m environ, et parfois un enfant)
+    const enfant = r() < .08, h = enfant ? (vrai ? .7 : .68) : vrai ? .93 + r() * .15 : .92 + r() * .18, l = enfant ? .78 : .94 + r() * .12;
     p.scale.set(l, h, l);
   }
   // Un chien qui suit son maître et remue la queue
@@ -1285,13 +1341,20 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
         f.position.y = ANCRES[i].y - .9 + ph * 1.3; f.scale.setScalar(.6 + ph * 1.4); f.material.opacity = st.panne ? Math.sin(ph * Math.PI) * .7 : 0;
       });
     });
-    const sacsVus = Math.min(Math.ceil(e.stock[e.maison] / 50), a(e, 'palette') ? 6 : 3);
-    sacsPile.forEach((s, k) => { s.visible = k < sacsVus; (s.userData.toile || s.children[0].material).color.setHex(COULEUR_SAC[e.maison]); });
+    // Les sacs de la réserve : autant d'emplacements remplis que la réserve est pleine, chaque grain avec sa couleur
+    const places = sacsPile.filter(s => s.userData.place.quand(e));
+    const enStock = Object.entries(e.stock).filter(([, v]) => v > 0), total = enStock.reduce((x, [, v]) => x + v, 0);
+    const nSacs = total > 0 ? Math.max(1, Math.round(places.length * Math.min(1, total / capaciteReserve(e)))) : 0;
+    const couleurs = []; enStock.sort((x, y) => y[1] - x[1]).forEach(([g, v]) => { for (let k = 0; k < Math.round(nSacs * v / total) && couleurs.length < nSacs; k++) couleurs.push(COULEUR_SAC[g]); });
+    while (couleurs.length < nSacs) couleurs.push(COULEUR_SAC[e.maison]);
+    sacsPile.forEach(s => { s.visible = false; });
+    places.forEach((s, k) => { s.visible = k < nSacs; if (k < nSacs) (s.userData.toile || s.children[0].material).color.setHex(couleurs[k]); });
 
     const actif = i => res.ventes <= 0 ? .1 : Math.min(3, .45 + debitStation(e, i) / debitMax(e, i) * Math.log2(1 + e.st[i].niv) * .7);
+    // Le coursier va chercher un sac sur l'étagère de la réserve (par la porte) et le porte au moulin
     if (coursier.libre()) coursier.aller(
-      { x: -4.2, z: -1.9, attente: .5, fn: () => { sacPorte.visible = e.stock[e.maison] > 0; } },
-      { x: -2.5, z: -2.3, face: Math.PI, attente: .5, fn: () => { sacPorte.visible = false; } });
+      { x: -3.45, z: -2.9 }, { x: -4.4, z: -3.15, face: Math.PI, attente: .5, fn: () => { sacPorte.visible = e.stock[e.maison] > 0; } },
+      { x: -3.45, z: -2.9 }, { x: -2.5, z: -2.3, face: Math.PI, attente: .5, fn: () => { sacPorte.visible = false; } });
     coursier.maj(dt, e.st[0].panne ? 0 : actif(0));
     const am = e.st[1].panne ? 0 : actif(1);
     tambour.rotation.x += dt * 3 * am; manivelle.rotation.y += dt * 4 * am;
@@ -1344,10 +1407,10 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
       const sert = res.ventes > 0;
       const place = sert && Math.random() < .7 ? sieges.find(s => s.libre && TABLES[s.table].g.visible) : null;
       if (place) place.libre = false;
-      const tete = m => m.o.position.clone().add(new THREE.Vector3(0, 1.6, 0));
+      const tete = m => m.o.position.clone().add(new THREE.Vector3(0, m.o.userData.realiste ? 1.95 : 1.6, 0));
       c.aller({ x: 1.0, z: 2.6 }, { x: pick(pointsAttente()), z: -.55, face: Math.PI, attente: 1.0, fn: m => {
         if (sert) {
-          const ta = modele('tasse'); if (ta) put(ta, .24, .5, .1, m.o); else put(cyl(.07, .055, .14, C.lait, 10), .2, .62, .17, m.o);
+          const ta = modele('tasse'); if (ta) { put(ta, .23, m.o.userData.realiste ? .8 : .5, .08, m.o); if (m.o.userData.realiste) ta.scale.setScalar(.7); } else put(cyl(.07, .055, .14, C.lait, 10), .2, .62, .17, m.o);
           gainEnAttente = 0;   // pas d’argent qui vole : la caisse se lit en haut de l’écran
           if (m.habitue) surHabitue(m.habitue, tete(m).add(new THREE.Vector3(0, .5, 0)));
         } else surPop(tete(m), 'Plus de café ?!', true);

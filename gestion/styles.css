@@ -571,3 +571,20 @@ body { color:var(--encre); }
 .mois-barres i.res, .pastille-res { background:var(--accent); }
 .carte-argent small { font-size:11px; font-weight:700; line-height:1.35; }
 .carte-argent span.rouge, .carte-argent .moment .rouge { color:#A5483F; font-weight:800; }
+
+/* ---------- v5.3 : affichage plus facile à lire ---------- */
+/* Journal : 5 rubriques avec une icône, puis les pages de la rubrique */
+.onglets { grid-template-columns:repeat(5, 1fr); gap:3px; }
+.onglet.rubrique { display:flex; flex-direction:column; align-items:center; gap:1px; padding:6px 2px 5px; font-size:11px; line-height:1.15; }
+.onglet.rubrique .ico { font-size:17px; line-height:1; }
+.sous-onglets { display:flex; gap:4px; margin:-2px 0 8px; border-bottom:1px solid var(--filet); }
+.sous-onglets button { flex:1; border:0; background:none; padding:7px 4px; font:800 12px Nunito; color:var(--cafe-doux); border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; touch-action:manipulation; }
+.sous-onglets button.choisi { color:var(--encre); border-bottom-color:var(--espresso); }
+.sous-onglets .pastille { background:#A5483F; color:#fff; border-radius:8px; padding:0 5px; font-size:10px; }
+/* Barre du bas : une icône au-dessus de chaque bouton */
+.boutons.nav .btn::before { display:block; font-size:16px; line-height:1.1; margin-bottom:1px; }
+#b-stock::before { content:'📦'; } #b-prix::before { content:'🏷️'; } #b-travaux::before { content:'📒'; } #b-carnet::before { content:'📓'; } #rush::before { content:'⏱️'; }
+/* En-tête : chaque chiffre dit ce qu'il est */
+.carte-argent #argent::before { content:'En caisse'; display:block; font:800 10px Nunito, sans-serif; letter-spacing:.05em; text-transform:uppercase; color:var(--cafe-doux); margin-bottom:1px; }
+.etoiles::before { content:'Note '; font:800 10px Nunito, sans-serif; letter-spacing:.05em; text-transform:uppercase; color:var(--cafe-doux); }
+.puce[data-goulot], .puce[data-journal], .puce[data-stock], .puce[data-panne] { cursor:pointer; }
