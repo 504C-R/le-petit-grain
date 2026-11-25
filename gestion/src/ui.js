@@ -23,7 +23,7 @@ const COURTS_MOMENTS = ['Matin', 'Midi', 'Aprèm', 'Soir'];
 
 export function creerUI({ jeu, scene }) {
   const E = () => jeu.e;
-  let ouvert = null, choisie = null, accUI = 0, accPanneau = 0, revenuLisse = 0, toastT = null, argentAffiche = E().argent;
+  let ouvert = null, choisie = null, accUI = 0, accPanneau = 0, revenuLisse = 0, toastT = null, argentAffiche = E().argent, dernierArgent = E().argent, dernierPulse = 0;
 
   // ---------- Bulle de mamie et notifications ----------
   function bulle(texte, { titre = 'Mamie Odette', boutons = [{ label: "D'accord !" }] } = {}) {
@@ -815,6 +815,10 @@ export function creerUI({ jeu, scene }) {
     argentAffiche = Math.abs(e.argent - argentAffiche) < .5 ? e.argent : argentAffiche + (e.argent - argentAffiche) * Math.min(1, dt * 7);
     $('argent').textContent = fmt(argentAffiche);
     $('argent').classList.toggle('rouge', e.argent < 0);
+    // la caisse « pulse » quand l'argent rentre (pas plus de deux fois par seconde)
+    const maintenant = performance.now();
+    if (e.argent > dernierArgent + .5 && maintenant - dernierPulse > 500) { dernierPulse = maintenant; const a = $('argent'); a.classList.remove('gain'); void a.offsetWidth; a.classList.add('gain'); }
+    dernierArgent = e.argent;
     // L'en-tête d'un gérant : l'heure et la date, puis l'affluence en mots simples (pas d'euros qui défilent)
     $('ips').textContent = J.ouvert(e) ? heureTexte(e.horloge) : 'Fermé';
     const ph = res.parHeure;
@@ -882,10 +886,35 @@ export function creerUI({ jeu, scene }) {
   }
 
   function objectifAtteint(o) {
-    sons.succes();
-    toast(`Objectif atteint : <b>${o.texte}</b>${o.prime ? ` · +${fmt(o.prime)}` : ''}`, 4500);
     const el = $('objectif'); el.classList.remove('bravo'); void el.offsetWidth; el.classList.add('bravo');
+    celebrer({ genre: 'Objectif atteint', titre: 'Bravo !', texte: o.texte, prime: o.prime });
   }
+  // ---------- Célébration : rayons qui tournent, confettis, une étoile qui rebondit (le jeu se met en pause) ----------
+  const fileFetes = [];
+  let feteEnCours = false, vitesseAvantFete = 1;
+  function celebrer(f) {
+    fileFetes.push(f);
+    if (!feteEnCours) prochaineFete();
+  }
+  function prochaineFete() {
+    const f = fileFetes.shift();
+    if (!f) { feteEnCours = false; if (jeu.vitesse === 0) { jeu.vitesse = vitesseAvantFete || 1; majVitesse(); } return; }
+    if (!feteEnCours) { vitesseAvantFete = jeu.vitesse; jeu.vitesse = 0; majVitesse(); }
+    feteEnCours = true;
+    $('fete-genre').textContent = f.genre || ''; $('fete-titre').textContent = f.titre; $('fete-texte').textContent = f.texte || '';
+    $('fete-prime').textContent = f.prime ? '+' + fmt(f.prime) : ''; $('fete-prime').hidden = !f.prime;
+    const c = $('confettis'); c.innerHTML = '';
+    const COULEURS = ['#FFD34A', '#E8584F', '#5FAE2E', '#4FA3E0', '#F28A3A', '#A77BDB', '#FFFFFF'];
+    for (let k = 0; k < 46; k++) {
+      const i = document.createElement('i');
+      i.style.left = Math.random() * 100 + '%'; i.style.background = COULEURS[k % COULEURS.length];
+      i.style.animationDelay = (Math.random() * .7) + 's'; i.style.animationDuration = (1.8 + Math.random() * 1.6) + 's';
+      i.style.setProperty('--tourne', (Math.random() * 720 - 360) + 'deg'); i.style.setProperty('--derive', (Math.random() * 120 - 60) + 'px');
+      c.appendChild(i);
+    }
+    $('fete').hidden = false; sons.succes();
+  }
+  $('fete-ok').onclick = () => { $('fete').hidden = true; sons.clic(); setTimeout(prochaineFete, 180); };
   function finJournee(b) {
     toast(`19 h, le café ferme. ${Math.round(b.clients)} clients servis, ${Math.round(b.perdus)} repartis. Résultat du jour : <b>${montant(b.benefice)}</b>.`, 6500);
   }
@@ -904,5 +933,5 @@ export function creerUI({ jeu, scene }) {
       b.onclick = () => { const msg = J.choisirDecision(E(), k); if (msg) toast(msg, 5000); sons.clic(); jeu.sauver(); majDecision(E()); }; z.appendChild(b); });
   }
   function ouvrirJournal(o) { if (o) onglet = o; ouvrir('p-travaux'); majTravaux(); }
-  return { maj, toast, bulle, pop, parole, humeur, ficheClient, annoncerGazette, afficherGazette, afficherAnnee, fermer, toucherStation, objectifAtteint, finJournee, ouvrirJournal, majVitesse, tutoriel };
+  return { maj, toast, bulle, pop, parole, humeur, ficheClient, annoncerGazette, afficherGazette, afficherAnnee, celebrer, fermer, toucherStation, objectifAtteint, finJournee, ouvrirJournal, majVitesse, tutoriel };
 }

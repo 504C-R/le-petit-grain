@@ -148,7 +148,7 @@ function image(dt) {
   if (accVerif > 1) {
     accVerif = 0;
     const obj = J.verifierObjectif(e); if (obj) { ui.objectifAtteint(obj); plateforme.joie(); }
-    J.verifierSucces(e).forEach((s, k) => setTimeout(() => sons.succes() || ui.toast(`Succès : <b>${s.nom}</b>`, 4000), k * 1500));
+    J.verifierSucces(e).forEach(s => ui.celebrer({ genre: 'Nouveau succès', titre: s.nom, texte: s.desc }));
     if (document.getElementById('bulle').hidden) { const h = J.verifierHistoire(e); if (h) { ui.bulle(h.texte, { titre: h.titre }); scene.majDecor(e); } }
   }
   // Pour la 3D : le personnel présent apparaît à son poste (ces champs ne servent qu'au dessin)

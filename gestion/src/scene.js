@@ -1338,7 +1338,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
       else { const s = put(rbox(.2, .26, .07, pick(COULEURS_TENUES), .03), .27, .5, 0, g); s.rotation.z = .08; put(cyl(.01, .01, .3, C.cafe, 6), .27, .76, 0, g).rotation.z = .4; }
     }
     // tailles variées (de 1,60 m à 1,85 m environ, et parfois un enfant)
-    const enfant = r() < .08, h = enfant ? (vrai ? .7 : .68) : vrai ? .93 + r() * .15 : .92 + r() * .18, l = enfant ? .78 : .94 + r() * .12;
+    const enfant = r() < .1, h = enfant ? (vrai ? .72 : .68) : vrai ? .9 + r() * .2 : .92 + r() * .18, l = enfant ? .8 : .86 + r() * .32;   // silhouettes variées : minces, costauds, grands, petits
     p.scale.set(l, h, l);
   }
   // Un chien qui suit son maître et remue la queue
@@ -1623,6 +1623,9 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
         m.enFile = false;
         if (sert) {
           const ta = modele('tasse'); if (ta) { const f = m.o.userData.forme; put(ta, f ? f.main[1] : .23, f ? f.main[0] : .5, .08, m.o); if (f) ta.scale.setScalar(f.tasse); } else put(cyl(.07, .055, .14, C.lait, 10), .2, .62, .17, m.o);
+          // personnage animé : la tasse est dans la main droite, elle suit le geste quand il boit
+          const main = ta && m.o.userData.anim && m.o.getObjectByName('os_main_d');
+          if (main) { m.o.updateMatrixWorld(true); main.attach(ta); }
           if (gainEnAttente > 0) { surPop(tete(m), '+' + fmt(gainEnAttente)); gainEnAttente = 0; lancerPieces(tete(m)); }   // des pièces qui volent jusqu'à la caisse
           m.profil.servi = true;
           if (m.habitue) surHabitue(m.habitue, tete(m).add(new THREE.Vector3(0, .5, 0)));
