@@ -16,11 +16,18 @@ import { Grille } from './chemins.js';
 const NOMS_MODELES = ['machine_occasion', 'machine_neuve', 'machine_pro', 'moulin_manuel', 'moulin_electrique', 'torrefacteur',
   'personnage', 'table', 'table_vieille', 'chaise', 'chaise_vieille', 'plante', 'parasol_framboise', 'parasol_sauge', 'sac', 'caisse', 'tasse',
   'vitrine', 'ardoise', 'cadres', 'lampadaire', 'arbre', 'banc', 'velo', 'cafemax',
-  'machine_levier', 'machine_robot', 'cheminee', 'jukebox', 'lustre', 'chauffage', 'chien'];
+  'machine_levier', 'machine_robot', 'cheminee', 'jukebox', 'lustre', 'chauffage', 'chien',
+  // modèles KayKit (Kay Lousberg, CC0), convertis par tools/blender/kaykit.py
+  'tabouret', 'etagere_deco', 'etagere_petite', 'cadre_a', 'cadre_b', 'lampadaire_salon', 'fauteuil', 'canape', 'table_basse', 'tapis_raye',
+  'cactus', 'cactus_petit', 'livres', 'bocal_a', 'bocal_b', 'bocal_c', 'assiette', 'menu', 'caisse_pains', 'caisse_bois',
+  'route', 'route_passage', 'voiture_a', 'voiture_b', 'voiture_taxi', 'voiture_c', 'buisson', 'borne_incendie', 'benne',
+  'immeuble_a', 'immeuble_b', 'immeuble_c', 'immeuble_d', 'immeuble_e', 'immeuble_f', 'immeuble_g', 'immeuble_h'];
+// Les animations des modèles (personnage : marche, repos, assis, travail), gardées à part
+const ANIMS = {};
 async function chargerModeles(surProgression) {
   const chargeur = new GLTFLoader(), M = {};
   let faits = 0;
-  await Promise.all(NOMS_MODELES.map(n => chargeur.loadAsync(`assets/models/${n}.glb`).then(g => { M[n] = g.scene; }).catch(() => {})
+  await Promise.all(NOMS_MODELES.map(n => chargeur.loadAsync(`assets/models/${n}.glb`).then(g => { M[n] = g.scene; ANIMS[n] = g.animations || []; }).catch(() => {})
     .finally(() => surProgression?.(++faits / NOMS_MODELES.length))));
   return M;
 }
@@ -59,6 +66,31 @@ function texture(w, h, dessin) {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
 }
 
+// Copie d'un modèle à squelette : chaque copie a ses propres os (même principe que SkeletonUtils.clone de three.js)
+function clonerAvecOs(source) {
+  const copie = source.clone(true), versCopie = new Map(), versSource = new Map();
+  const parcourir = (a, b) => { versCopie.set(a, b); versSource.set(b, a); a.children.forEach((c, k) => parcourir(c, b.children[k])); };
+  parcourir(source, copie);
+  copie.traverse(n => {
+    if (!n.isSkinnedMesh) return;
+    const s = versSource.get(n);
+    n.skeleton = s.skeleton.clone(); n.bindMatrix.copy(s.bindMatrix);
+    n.skeleton.bones = s.skeleton.bones.map(b => versCopie.get(b));
+    n.bind(n.skeleton, n.bindMatrix);
+  });
+  return copie;
+}
+// Passe en douceur d'une animation à l'autre (marche, repos, assis, travail) ; « vitesse » règle la cadence
+function jouer(p, nom, vitesse = 1) {
+  const an = p.userData.anim; if (!an) return;
+  const act = an.actions[nom]; if (!act) return;
+  act.timeScale = vitesse;
+  if (an.courant === act) return;
+  act.reset().setEffectiveWeight(1).fadeIn(.25).play();
+  if (an.courant) an.courant.fadeOut(.25);
+  an.courant = act;
+}
+
 // Un personnage qui marche d'un point à l'autre, en contournant les meubles (grille et A*) et en évitant les autres personnes
 class Marcheur {
   static tous = new Set();     // tous les marcheurs présents, pour s'éviter entre eux
@@ -69,6 +101,8 @@ class Marcheur {
   libre() { return this.chemin.length === 0 && this.attente <= 0; }
   // Bras et jambes : balancent en marchant, se replient quand on est assis
   membres(marche) {
+    // personnage animé : on choisit simplement son animation, la cadence de marche suit sa vitesse
+    if (this.o.userData.anim) { jouer(this.o, this.assis ? 'assis' : marche ? 'marche' : 'repos', marche ? 1.25 * this.vitesse / 1.8 : 1); return; }
     const mb = this.o.userData.membres; if (!mb || !mb.jg) return;
     const a = marche ? Math.sin(this.t * 11) * .55 : 0;
     const jambes = this.assis ? -1.5 : a;
@@ -133,7 +167,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   // Copie d'un modèle, avec ses ombres ; « couleurs » recolore les matériaux par nom (habit, peau, cheveux…)
   function modele(nom, couleurs = {}) {
     if (!M[nom]) return null;
-    const o = M[nom].clone(true);
+    const o = ANIMS[nom]?.length ? clonerAvecOs(M[nom]) : M[nom].clone(true);
     o.traverse(m => {
       if (!m.isMesh) return;
       m.castShadow = m.receiveShadow = true;
@@ -366,12 +400,25 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   const groupes = [0, 1, 2, 3].map(i => { const g = new THREE.Group(); g.userData.station = i; scene.add(g); return g; });
 
   const PANTALONS = [0x3E6BB0, 0x5C4A3E, 0x2F8F6B, 0x8A5A3A, 0x4A5A9E, 0xC9A86A, 0x6E86A8];
+  const animes = new Set();   // les personnages animés présents (leur mélangeur avance à chaque image)
   function perso(habit, cheveux, { tablier = false, peau = C.peau, pantalon = null } = {}) {
-    const p = modele('personnage', { habit, cheveux, peau, ...(pantalon ? { pantalon } : {}) });
+    const p = modele('personnage', { habit, cheveux, peau, tablier: 0x8A5226, ...(pantalon ? { pantalon } : {}) });
     if (p) {
       ombreContact(p);
       const t = p.getObjectByName('tablier'); if (t) t.visible = tablier;
       const n = k => p.getObjectByName(k);
+      // Personnage à squelette : une coiffure au hasard, et un mélangeur d'animations (mis à jour à chaque image)
+      if (ANIMS.personnage?.length) {
+        const coiffures = ['coiffure_courte', 'coiffure_longue', 'coiffure_houppette', 'coiffure_chignon'].map(n).filter(Boolean);
+        const garde = pick(coiffures); coiffures.forEach(c => { c.visible = c === garde; });
+        const mixer = new THREE.AnimationMixer(p), actions = {};
+        ANIMS.personnage.forEach(c => { actions[c.name] = mixer.clipAction(c); });
+        p.userData.anim = { mixer, actions, courant: null };
+        p.userData.membres = {}; p.userData.realiste = true; p.userData.forme = FORMES.cartoon;
+        jouer(p, 'repos'); mixer.update(Math.random() * 2);   // chacun respire à son rythme
+        animes.add(p);
+        return p;
+      }
       p.userData.membres = { bg: n('bras_g'), bd: n('bras_d'), jg: n('jambe_g'), jd: n('jambe_d'), kg: n('genou_g'), kd: n('genou_d'), tete: n('tete') };
       p.userData.realiste = !!n('genou_g');
       // les mesures du modèle chargé : cartoon (grosse tête) ou réaliste (1,72 m)
@@ -584,6 +631,9 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
         const ch = modele(vieille ? 'chaise_vieille' : 'chaise'); ch.rotation.y = rot; put(ch, dx, 0, 0, g);
         sieges.push({ x: tb.x + dx * .8, z: tb.z, face: rot + Math.PI, libre: true, table: k });
       });
+      // sur chaque table : le menu plié et une assiette (KayKit)
+      const mn = modele('menu'); if (mn) { mn.rotation.y = k * 1.1; put(mn, .12, .75, -.1, g); }
+      const as = modele('assiette'); if (as) put(as, -.18, .75, .14, g);
       tb.g = g; return;
     }
     put(cyl(.55, .55, .08, vieille ? 0xD9CDBE : C.lait, 28), 0, .78, 0, g);
@@ -598,6 +648,20 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     });
     tb.g = g;
   });
+
+  // ---- Décor KayKit (Kay Lousberg, CC0) : le buffet derrière le bar, des bocaux sur le comptoir, des cadres, un coin lecture ----
+  const kk = (nom, x, y, z, rot = 0, parent = scene, ech = 1) => { const m = modele(nom); if (!m) return null; m.rotation.y = rot; m.scale.setScalar(ech); return put(m, x, y, z, parent); };
+  D.buffet = grp(groupes[2]);
+  kk('etagere_deco', -1.0, 0, -3.72, 0, D.buffet); kk('etagere_deco', .65, 0, -3.72, 0, D.buffet);
+  kk('livres', -1.4, .66, -3.72, 0, D.buffet); kk('cactus_petit', 1.2, .66, -3.72, 0, D.buffet);
+  D.bocaux = grp(groupes[2]);
+  [['bocal_a', 1.25], ['bocal_b', 1.48], ['bocal_c', 1.68]].forEach(([n, x], k) => kk(n, x, 1.12, -1.75 + (k % 2) * .12, k, D.bocaux));
+  kk('cactus_petit', -1.25, 1.12, -1.75, 0, D.bocaux);
+  D.cadresMur = grp(scene);   // après le coup de peinture
+  kk('cadre_a', -5.92, 1.0, 1.0, Math.PI / 2, D.cadresMur); kk('cadre_b', -5.92, 1.15, 2.6, Math.PI / 2, D.cadresMur);
+  D.coinLecture = grp(scene);  // après la cloison : un lampadaire et un cactus dans le coin
+  kk('lampadaire_salon', 5.55, 0, 3.65, 0, D.coinLecture); kk('cactus', 5.55, 0, 1.95, 0, D.coinLecture);
+
   D.terrasse = grp(scene);
   put(rbox(7.6, .3, 2.9, 0xE6D3BC, .08), -2.2, -.2, 5.75, D.terrasse);
   for (let x = -5.8; x <= 1.4; x += .6) put(rbox(.08, .5, .08, C.caramelF, .02), x, .2, 7.1, D.terrasse);
@@ -720,6 +784,9 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   function groupeTete(p) {
     const g = grp(p);
     const f = p.userData.forme; if (f) { g.scale.set(f.teteS, f.teteS * f.teteSy, f.teteS); g.position.y = f.teteC - 1.03 * f.teteS * f.teteSy; }
+    // personnage à squelette : le chapeau est accroché à l'os de la tête, il suit ses mouvements
+    const os = p.userData.anim && p.getObjectByName('os_tete');
+    if (os) { p.updateMatrixWorld(true); os.attach(g); }
     return g;
   }
   // Accessoires des habitués, posés sur la tête
@@ -776,7 +843,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     grille.vider();
     grille.bloquer(-6.4, 6.3, -4.5, -3.95, 0);   // mur du fond
     grille.bloquer(-6.5, -5.95, -4.5, 4.1, 0);   // mur de gauche
-    const sources = [...groupes, D.cloison, D.cartons, D.plantes, D.plantesB, D.terrasse, D.emporter, D.boutique, D.etage, D.cheminee, D.jukebox].filter(Boolean);
+    const sources = [...groupes, D.cloison, D.cartons, D.plantes, D.plantesB, D.terrasse, D.emporter, D.boutique, D.etage, D.cheminee, D.jukebox, D.coinLecture].filter(Boolean);
     const visible = o => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
     for (const s of sources) s.traverse(m => {
       if (!m.isMesh || !visible(m)) return;
@@ -825,6 +892,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     D.velo.visible = e.rep >= 2.2; D.cafemax.visible = cafemaxOuvert(e);
     D.vitrine.visible = a(e, 'vitrine'); D.ardoise.visible = a(e, 'ardoise'); D.cadres.visible = a(e, 'peinture');
     D.fresque.visible = a(e, 'fresque'); D.entrepot.visible = a(e, 'entrepot'); D.emporter.visible = a(e, 'emporter'); D.cargo.visible = a(e, 'velo');
+    D.cadresMur.visible = a(e, 'peinture'); D.coinLecture.visible = ag && !a(e, 'etage');
     D.boutique.visible = a(e, 'boutique'); D.ecole.visible = a(e, 'ecole'); D.etage.visible = a(e, 'etage');
     // Le guichet et l'escalier prennent la place des plantes du côté droit
     D.plantesB.visible = a(e, 'plantes') && ag && !a(e, 'emporter') && !a(e, 'jukebox');
@@ -1382,8 +1450,33 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   // Deux grandes façades plates au fond du quartier (derrière le café) : le monument au fond, des toits à gauche
   const matVilleFond = new THREE.MeshBasicMaterial({ transparent: true, opacity: .55, depthWrite: false, color: 0x9C8070 });
   const matVilleCote = matVilleFond.clone();
-  const villeLoin = put(new THREE.Mesh(new THREE.PlaneGeometry(36, 9), matVilleFond), 2, 4.3, -11.5);
-  const villeCote = put(new THREE.Mesh(new THREE.PlaneGeometry(30, 7), matVilleCote), -13, 3.4, 1); villeCote.rotation.y = Math.PI / 2;
+  // (repoussées loin derrière les immeubles du quartier, et agrandies pour dépasser de leurs toits)
+  const villeLoin = put(new THREE.Mesh(new THREE.PlaneGeometry(36, 9), matVilleFond), 2, 9, -26); villeLoin.scale.setScalar(2.2);
+  const villeCote = put(new THREE.Mesh(new THREE.PlaneGeometry(30, 7), matVilleCote), -26, 7, 1); villeCote.rotation.y = Math.PI / 2; villeCote.scale.setScalar(2.2);
+
+  // ---- Le quartier (KayKit City Builder, Kay Lousberg, CC0) : des immeubles voisins derrière et à gauche du café,
+  // une route devant, avec des voitures qui passent dans les deux sens ----
+  const quartier = grp(scene);
+  const IMM = 'abcdefgh';
+  for (let k = 0; k < 6; k++) kk(`immeuble_${IMM[(k * 3 + 2) % 8]}`, -16.6 + k * 7.4, 0, -12.2, 0, quartier);
+  for (let k = 0; k < 2; k++) kk(`immeuble_${IMM[(k * 5 + 1) % 8]}`, -10.4, 0, -1.8 + k * 7.4, Math.PI / 2, quartier);
+  for (let x = -36; x <= 36; x += 9) kk(x === 0 ? 'route_passage' : 'route', x, -.08, 13.3, Math.PI / 2, quartier);
+  [[-8.6, 6.4], [-8.6, 8.0], [10.6, -2.4], [10.6, 1.2], [10.6, 4.6]].forEach(([x, z]) => kk('buisson', x, 0, z, Math.random() * 6, quartier));
+  kk('borne_incendie', 9.0, 0, 8.35, 0, quartier);
+  kk('benne', -4.6, 0, -5.0, 0, quartier);
+  // les voitures : deux files, en boucle d'un bout à l'autre de la rue
+  const MODELES_VOITURES = ['voiture_a', 'voiture_b', 'voiture_taxi', 'voiture_c'];
+  const voitures = MODELES_VOITURES.map((nom, k) => {
+    const sens = k % 2 ? -1 : 1, m = kk(nom, -30 + k * 17, 0, sens > 0 ? 12.1 : 14.6, sens > 0 ? Math.PI / 2 : -Math.PI / 2, quartier);
+    return m && { m, sens, vitesse: 4 + Math.random() * 3, pause: 0 };
+  }).filter(Boolean);
+  function majVoitures(dt) {
+    for (const v of voitures) {
+      v.m.position.x += v.sens * v.vitesse * dt;
+      if (v.sens > 0 && v.m.position.x > 38) { v.m.position.x = -38; v.vitesse = 4 + Math.random() * 3; }
+      if (v.sens < 0 && v.m.position.x < -38) { v.m.position.x = 38; v.vitesse = 4 + Math.random() * 3; }
+    }
+  }
   let villeAffichee = null; const teinteVille = new THREE.Color(0xEFDDC8);
   function majVille(e) {
     const nom = VILLES[e.meta.ville % VILLES.length], info = INFOS_VILLES[nom];
@@ -1419,6 +1512,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
       f.scale.setScalar(.6 + ph * 1.6); f.material.opacity = Math.sin(ph * Math.PI) * (actif ? .55 : .2);
     });
     fenetreCuisine.material.emissiveIntensity = actif ? 1.3 : .5;
+    if (chef.userData.anim) jouer(chef, actif ? 'travail' : 'repos', actif ? 1.4 : 1);
     const mb = chef.userData.membres; if (mb && mb.bd) mb.bd.rotation.x = -1 + Math.sin(t * (actif ? 7 : 2)) * .4;
   }
 
@@ -1463,6 +1557,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     }));
     baristas.forEach((b, i) => {
       b.rotation.y = Math.sin(t * 2.2 * ab + i) * .5 * Math.min(1, ab); b.position.y = Math.abs(Math.sin(t * 5 * ab + i)) * .02;
+      if (b.userData.anim) jouer(b, ab > .15 ? 'travail' : 'repos', .6 + Math.min(1.2, ab) * .6);
       const mb = b.userData.membres;
       if (mb && mb.bd) { mb.bd.rotation.x = -1.1 + Math.sin(t * 6 * ab + i) * .35 * Math.min(1, ab); mb.bg.rotation.x = -.7 + Math.sin(t * 4 * ab + i * 2) * .25 * Math.min(1, ab); }
     });
@@ -1476,6 +1571,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
       m.visible = e.st[i].manager;
       if (!m.visible) return;
       m.position.y = Math.abs(Math.sin(t * 1.5 + i)) * .015;
+      if (m.userData.anim) jouer(m, 'travail', .8);
       const mb = m.userData.membres;
       if (mb && mb.bd) { mb.bd.rotation.x = -.6 + Math.sin(t * 2 + i) * .25; mb.tete.rotation.y = Math.sin(t * .7 + i * 2) * .4; }
     });
@@ -1541,7 +1637,8 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     const nettoyer = liste => liste.filter(c => { if (c.fini) { c.quitter(); scene.remove(c.o); if (c.chien) scene.remove(c.chien.o); return false; } return true; });
     clients = nettoyer(clients); livreurs = nettoyer(livreurs);
 
-    majChutes(dt); majConfettis(dt); majPigeons(dt); majMeteo(dt, e); majConfort(dt, e); majCiel(dt, e); majCuisine(dt, e);
+    for (const p of animes) { if (!p.parent) { animes.delete(p); continue; } if (p.visible) p.userData.anim.mixer.update(dt); }   // les personnages animés
+    majChutes(dt); majConfettis(dt); majPigeons(dt); majVoitures(dt); majMeteo(dt, e); majConfort(dt, e); majCiel(dt, e); majCuisine(dt, e);
     machines.forEach(m => { const b = m.userData.bras; if (b && b.parent.visible) b.rotation.y = Math.sin(t * 2.6 * Math.max(.2, ab)) * 1.1; });
     if (innerWidth && innerHeight) { if (hauteQualite) composer.render(); else renderer.render(scene, cam); }
   }
