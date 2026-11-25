@@ -76,7 +76,48 @@ export function couper(oui) {
 addEventListener('pointerdown', () => { audio(); if (musiqueOn) demarrerMusique(); }, { once: true });
 document.addEventListener('visibilitychange', () => couper(document.hidden));
 
+// ---------- Ambiance du café : le murmure de la salle (plus fort quand il y a du monde) et la pluie sur la vitrine ----------
+let amb = null;
+function bufferBruit(c, brun) {
+  const b = c.createBuffer(1, c.sampleRate * 3, c.sampleRate), d = b.getChannelData(0); let dernier = 0;
+  for (let i = 0; i < d.length; i++) { const w = Math.random() * 2 - 1; if (brun) { dernier = (dernier + .02 * w) / 1.02; d[i] = dernier * 3.5; } else d[i] = w; }
+  return b;
+}
+function creerAmbiance() {
+  const c = ctx; if (!c) return null;
+  const source = brun => { const s = c.createBufferSource(); s.buffer = bufferBruit(c, brun); s.loop = true; s.start(); return s; };
+  // murmure : du bruit brun filtré autour des fréquences de la voix, qui « respire » lentement
+  const voix = c.createBiquadFilter(); voix.type = 'bandpass'; voix.frequency.value = 520; voix.Q.value = .9;
+  const murmure = c.createGain(); murmure.gain.value = 0;
+  const souffle = c.createOscillator(), profondeur = c.createGain(); souffle.frequency.value = .23; profondeur.gain.value = 0; souffle.connect(profondeur).connect(murmure.gain); souffle.start();
+  source(true).connect(voix).connect(murmure).connect(general);
+  // pluie : bruit blanc adouci
+  const haut = c.createBiquadFilter(); haut.type = 'highpass'; haut.frequency.value = 900;
+  const bas = c.createBiquadFilter(); bas.type = 'lowpass'; bas.frequency.value = 6500;
+  const pluie = c.createGain(); pluie.gain.value = 0;
+  source(false).connect(haut).connect(bas).connect(pluie).connect(general);
+  return { murmure, profondeur, pluie };
+}
+// Appelée à chaque image : clients présents, café ouvert, pluie
+export function ambiance({ clients = 0, ouvert = false, pluie = false } = {}) {
+  if (!ctx || ctx.state !== 'running') return;
+  if (!amb) amb = creerAmbiance(); if (!amb) return;
+  const on = actif && !coupe, t = ctx.currentTime;
+  const m = on && ouvert ? Math.min(.11, .012 + clients * .009) : 0;
+  amb.murmure.gain.setTargetAtTime(m, t, 1.2); amb.profondeur.gain.setTargetAtTime(m * .35, t, 1.2);
+  amb.pluie.gain.setTargetAtTime(on && pluie ? .022 : 0, t, 1.5);
+}
+
 export const sons = {
+  // le sifflement de la buse à vapeur et le tintement d'une tasse posée
+  vapeur() {
+    const c = audio(); if (!c || !actif) return;
+    const s = c.createBufferSource(); s.buffer = bufferBruit(c, false);
+    const f = c.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 2800;
+    const g = c.createGain(), t = c.currentTime; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.018, t + .15); g.gain.exponentialRampToValueAtTime(.0001, t + 1.4);
+    s.connect(f).connect(g).connect(busSons); s.start(t); s.stop(t + 1.5);
+  },
+  tasse() { sonNote(2350 + Math.random() * 300, 0, .18, 'sine', .012); sonNote(3100 + Math.random() * 300, .01, .12, 'sine', .007); },
   tinte() { const n = performance.now(); if (n - dernierTinte < 300) return; dernierTinte = n; sonNote(1318, 0, .12, 'triangle', .04); sonNote(1760, .06, .2, 'triangle', .03); },
   clic() { sonNote(660, 0, .08, 'sine', .05); },
   achat() { [523, 659, 784, 1046].forEach((f, i) => sonNote(f, i * .07, .28, 'triangle', .05)); },

@@ -8,7 +8,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { nomCafe, prixEffectif, neige, murActuel, solActuel, formuleDuMoment, a, tierMachine, nbMachines, tierMoulin, debitStation, debitMax, panier, pleut, choisirHabitue, cafemaxOuvert, capaciteReserve, prixProduit, produitActif, CATALOGUE_CARTE, ouvert, avanceeJournee, CATALOGUE_MACHINES } from './game.js';
+import { nomCafe, prixEffectif, neige, murActuel, solActuel, formuleDuMoment, a, tierMachine, nbMachines, tierMoulin, debitStation, debitMax, panier, pleut, choisirHabitue, cafemaxOuvert, capaciteReserve, prixProduit, produitActif, CATALOGUE_CARTE, partsCarte, ratioPrixCarte, satisfaction, ouvert, avanceeJournee, CATALOGUE_MACHINES } from './game.js';
 import { G, VILLES, INFOS_VILLES } from './data.js';
 
 // Modèles 3D générés par Blender (tools/blender/modeles.py). Si un fichier manque, on garde les formes simples.
@@ -91,7 +91,7 @@ class Marcheur {
   }
 }
 
-export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitue = () => {}, surProgression }) {
+export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitue = () => {}, surProgression, surHumeur = () => {}, surClient = () => {} }) {
   const M = await chargerModeles(surProgression);
   // Copie d'un modèle, avec ses ombres ; « couleurs » recolore les matériaux par nom (habit, peau, cheveux…)
   function modele(nom, couleurs = {}) {
@@ -145,6 +145,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   let hauteQualite = true;
   function redim() {
     const w = innerWidth, h = innerHeight, r = w / h;
+    if (!w || !h) return;   // fenêtre réduite à rien (onglet replié) : on attend sa vraie taille
     const base = largeurVue * zoom;
     const largeur = r < 1 ? base : Math.max(base * 1.35, base * 1.25 * r);
     const hauteur = largeur / r;
@@ -805,6 +806,15 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     souris.set(ev.clientX / innerWidth * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1);
     ray.setFromCamera(souris, cam);
     const visible = o => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
+    // Un client touché : sa fiche (qui il est, ce qu'il a pris, ce qu'il pense)
+    // (on prend le client le plus proche du doigt à l'écran, à 45 px près : plus facile qu'un clic au pixel près)
+    let proche = null, dMin = 45;
+    for (const c of clients) {
+      if (c.fini || !c.profil) continue;
+      const [x, y] = projeter(c.o.position.clone().add(new THREE.Vector3(0, c.o.userData.realiste ? 1.0 : .7, 0)));
+      const d = Math.hypot(x - ev.clientX, y - ev.clientY); if (d < dMin) { dMin = d; proche = c; }
+    }
+    if (proche) { surClient(proche.profil, proche.o.position.clone().add(new THREE.Vector3(0, 2, 0))); return; }
     const hit = ray.intersectObjects(groupes, true).find(h => visible(h.object));
     if (!hit) return;
     let o = hit.object; while (o && o.userData.station === undefined) o = o.parent;
@@ -1141,6 +1151,24 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   }
 
   // ---- Personnages : coiffures, chapeaux, tenues selon la météo, sacs, tailles ----
+  // ---- Qui est ce client ? Un prénom, un âge, une commande tirée de la carte, et ce qu'il pense du café ----
+  const PRENOMS_CLIENTS = ['Léa', 'Hugo', 'Chloé', 'Nathan', 'Manon', 'Camille', 'Jules', 'Sarah', 'Louis', 'Gabriel', 'Zoé', 'Adam', 'Jade', 'Raphaël', 'Lina', 'Arthur', 'Emma', 'Malik', 'Juliette', 'Paul', 'Agnès', 'Michel', 'Fatou', 'Yves', 'Nora', 'Bastien', 'Élise', 'Omar', 'Colette', 'Victor'];
+  const METIERS = ['étudiante', 'infirmier', 'graphiste', 'retraitée', 'livreur', 'professeure', 'architecte', 'boulanger', 'avocate', 'touriste', 'musicien', 'comptable', 'pharmacienne', 'développeur', 'libraire'];
+  function profilClient(e, hab) {
+    const parts = partsCarte(e), boissons = Object.keys(parts).filter(id => CATALOGUE_CARTE[id].type === 'boisson'), extras = Object.keys(parts).filter(id => CATALOGUE_CARTE[id].type === 'extra');
+    let x = Math.random() * boissons.reduce((s, id) => s + parts[id], 0), boisson = boissons[0];
+    for (const id of boissons) { x -= parts[id]; if (x <= 0) { boisson = id; break; } }
+    const commande = [boisson, ...extras.filter(id => Math.random() < parts[id])].map(id => CATALOGUE_CARTE[id].nom.toLowerCase());
+    const r = ratioPrixCarte(e), sat = satisfaction(e);
+    const pense = r > 1.15 ? 'C’est bon, mais franchement cher pour ce que c’est.'
+      : sat >= 4.2 ? pick(['Le meilleur café du quartier, sans hésiter.', 'Je viens ici tous les matins, maintenant.', 'Quelle ambiance, on se sent bien ici.'])
+      : sat < 2.8 ? pick(['Le café pourrait être bien meilleur.', 'Bof… il manque quelque chose ici.'])
+      : r < .85 ? 'Pas cher du tout, j’adore !' : pick(['Un bon petit café, tranquille.', 'Sympa, je reviendrai.', 'Rien à redire, c’est correct.']);
+    const humeur = r > 1.15 ? '💸' : sat >= 4.2 ? '😍' : sat >= 3.4 ? '🙂' : sat < 2.8 ? '😕' : null;
+    const age = 18 + Math.floor(Math.random() * 62);
+    return { nom: hab ? hab.nom : pick(PRENOMS_CLIENTS), age: hab ? null : age, metier: hab ? 'un habitué' : pick(METIERS), commande, pense, humeur, habitue: !!hab };
+  }
+
   const COULEURS_TENUES = [0x7A3B36, 0xB0894A, 0x5E6E58, 0x3E4C66, 0x6B5A78, 0x3F5E60, 0x9A6A48, 0xE6DDD0, 0x2E2A2A];
   function habiller(p, cheveux, e) {
     const g = groupeTete(p), corps = grp(p), vrai = !!p.userData.realiste, r = Math.random, met = e.meteo;
@@ -1404,16 +1432,29 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
       // Un client sur dix vient avec son chien (un sur quatre quand il fait beau)
       if (Math.random() < (e.meteo === 'soleil' ? .25 : .1)) { c.chien = chienPour(); if (c.chien) c.chien.o.position.set(en.x + .5, 0, en.z); }
       c.o.rotation.y = Math.PI;
-      const sert = res.ventes > 0;
+      // Quand le café ne suit pas, une partie des clients fait la queue… puis repart sans être servie
+      const perdus = res.demande > 0 ? Math.max(0, Math.min(.9, 1 - res.ventes / res.demande)) : 0;
+      const repart = res.ventes > 0 && Math.random() < perdus;
+      const sert = res.ventes > 0 && !repart;
       const place = sert && Math.random() < .7 ? sieges.find(s => s.libre && TABLES[s.table].g.visible) : null;
       if (place) place.libre = false;
       const tete = m => m.o.position.clone().add(new THREE.Vector3(0, m.o.userData.realiste ? 1.95 : 1.6, 0));
-      c.aller({ x: 1.0, z: 2.6 }, { x: pick(pointsAttente()), z: -.55, face: Math.PI, attente: 1.0, fn: m => {
+      c.profil = profilClient(e, hab);
+      // la file d'attente se forme du comptoir vers la porte
+      const rang = Math.min(5, clients.filter(x => x.enFile).length);
+      c.enFile = true;
+      const attente = 1 + (perdus > .1 ? rang * .6 : 0) + (repart ? 2.5 : 0);
+      if (repart) setTimeout(() => { if (!c.fini && c.enFile) surHumeur(tete(c), '⏳'); }, 2500);
+      c.aller({ x: 1.0, z: 2.6 }, { x: pick(pointsAttente()), z: -.55 + rang * .55, face: Math.PI, attente, fn: m => {
+        m.enFile = false;
         if (sert) {
           const ta = modele('tasse'); if (ta) { put(ta, .23, m.o.userData.realiste ? .8 : .5, .08, m.o); if (m.o.userData.realiste) ta.scale.setScalar(.7); } else put(cyl(.07, .055, .14, C.lait, 10), .2, .62, .17, m.o);
           gainEnAttente = 0;   // pas d’argent qui vole : la caisse se lit en haut de l’écran
+          m.profil.servi = true;
           if (m.habitue) surHabitue(m.habitue, tete(m).add(new THREE.Vector3(0, .5, 0)));
-        } else surPop(tete(m), 'Plus de café ?!', true);
+          else if (m.profil.humeur && Math.random() < .45) surHumeur(tete(m), m.profil.humeur);
+        } else if (repart) { m.profil.parti = true; m.profil.pense = 'Trop d’attente… je reviendrai un autre jour.'; surHumeur(tete(m), '😠'); }
+        else surPop(tete(m), 'Plus de café ?!', true);
       } });
       if (place) c.aller({ x: place.x, z: place.z + .9 }, { x: place.x, z: place.z, face: place.face, assis: true, attente: 3 + Math.random() * 3, fn: () => { place.libre = true; } });
       c.aller({ x: 1.0, z: 2.8 }, { x: en.x, z: en.z, fn: m => { m.fini = true; } });
@@ -1431,7 +1472,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
 
     majChutes(dt); majConfettis(dt); majPigeons(dt); majMeteo(dt, e); majConfort(dt, e); majCiel(dt, e); majCuisine(dt, e);
     machines.forEach(m => { const b = m.userData.bras; if (b && b.parent.visible) b.rotation.y = Math.sin(t * 2.6 * Math.max(.2, ab)) * 1.1; });
-    if (hauteQualite) composer.render(); else renderer.render(scene, cam);
+    if (innerWidth && innerHeight) { if (hauteQualite) composer.render(); else renderer.render(scene, cam); }
   }
 
   // Mélange les ambiances voisines selon l'heure (0 = début du matin, 1 = fin de soirée)
@@ -1543,7 +1584,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     cible.set(x, 0, z);
     const r = l / h, L = r < 1 ? largeur : largeur * 1.15 * Math.max(1, r / 1.6), H = L / r;
     Object.assign(cam, { left: -L / 2, right: L / 2, top: H / 2, bottom: -H / 2 }); cam.updateProjectionMatrix(); placerCam();
-    if (hauteQualite) composer.render(); else renderer.render(scene, cam);
+    if (innerWidth && innerHeight) { if (hauteQualite) composer.render(); else renderer.render(scene, cam); }
     const toile = Object.assign(document.createElement('canvas'), { width: l, height: h });
     toile.getContext('2d').drawImage(renderer.domElement, 0, 0);
     renderer.setPixelRatio(ratio); cible.set(avant.x, 0, avant.z); redim();

@@ -1,10 +1,10 @@
 // Point d'entrée (version gestion) : relie la logique, la scène 3D et l'interface. Sauvegarde, vitesse, pannes, événements.
 import { creerScene } from './scene.js';
 import { creerUI, fmt } from './ui.js';
-import { sons } from './sons.js';
+import { sons, ambiance } from './sons.js';
 import { plateforme } from './plateforme.js';
 import * as J from './game.js';
-import { G, STATIONS } from './data.js';
+import { G, STATIONS, DIFFICULTES } from './data.js';
 
 // Sauvegarde à part de la version idle ; le mode ?debug a la sienne, pour ne jamais toucher à la vraie partie
 const CLE = new URLSearchParams(location.search).has('debug') ? 'n15x-gestion-v1-debug' : 'n15x-gestion-v1';
@@ -37,6 +37,8 @@ const scene = await creerScene(document.getElementById('scene'), {
   surStation: i => ui.toucherStation(i),
   surPop: (pos, txt, rouge) => { ui.pop(pos, txt, rouge); if (txt.startsWith('+') && txt.includes('€')) sons.tinte(); },
   fmt,
+  surHumeur: (pos, icone) => ui.humeur(pos, icone),
+  surClient: (profil, pos) => ui.ficheClient(profil, pos),
   surHabitue: (h, pos) => {
     const p = J.servirHabitue(e, h.id);
     if (!p) return;
@@ -117,6 +119,8 @@ function traiterArrivee(ar) {
     const m = ar.finMois, res = m.resultat;
     setTimeout(() => ui.bulle(`Bilan de ${m.nom.toLowerCase()} : ${fmt(m.ca)} de chiffre d’affaires, ${fmt(m.salaires)} de salaires, ${fmt(m.loyer)} de loyer. Résultat : ${res < 0 ? '−' + fmt(-res) : fmt(res)}${m.impots ? ` (après ${fmt(m.impots)} d’impôt)` : ''}. ${res > 0 ? 'Bravo, ma petite !' : 'On va redresser la barre : regarde les salaires et le prix.'}`, { titre: `Fin du mois de ${m.nom.toLowerCase()}` }), 1800);
   }
+  if (ar.gazette) setTimeout(() => ui.annoncerGazette(ar.gazette), 3500);
+  if (ar.finAnnee) setTimeout(() => ui.afficherAnnee(ar.finAnnee), 4200);
   if (ar.sauvetage) setTimeout(() => ui.bulle('Ton compte a plongé trop bas : la banque voulait fermer le café ! J’ai vidé mon livret pour te renflouer de 10 000 €. Je ne pourrai pas le refaire, alors fais attention aux charges.', { titre: 'Mamie à la rescousse' }), 2500);
   if (ar.faillite) setTimeout(() => ui.bulle('La banque a fermé le compte : le café est en faillite. On ne baisse pas les bras : on recommence, en surveillant mieux les charges.', { titre: 'Faillite', boutons: [{ label: 'Recommencer', cls: 'vert', fn: () => jeu.nouvellePartie() }] }), 2500);
 }
@@ -155,6 +159,13 @@ function image(dt) {
   e.st[3].manager = pres.some(p => p.role === 'salle');
   ui.maj(res, dt);
   scene.image(vitesse ? dt * Math.min(vitesse, 2) : 0, e, res);
+  // L'ambiance sonore suit l'affluence : murmure de la salle, pluie, la buse à vapeur et les tasses de temps en temps
+  const parH = res.parHeure?.ventes || 0;
+  ambiance({ clients: parH / 5, ouvert: J.ouvert(e) && vitesse > 0, pluie: J.pleut(e) });
+  if (J.ouvert(e) && vitesse > 0 && parH > 0) {
+    if (Math.random() < dt * .07 * Math.min(1.5, parH / 25)) sons.vapeur();
+    if (Math.random() < dt * .25 * Math.min(1.5, parH / 25)) sons.tasse();
+  }
 }
 function boucle(maintenant) {
   const dt = Math.min((maintenant - dernier) / 1000, .1); dernier = maintenant;
@@ -179,7 +190,15 @@ if (!params.has('debug') || params.has('accueil')) {
   champ.addEventListener('keydown', ev => { if (ev.key === 'Enter') document.getElementById('jouer').click(); });
   document.getElementById('accueil-info').textContent = dejaJoue ? `${J.nomCafe(e)} · ${J.dateTexte(e)} · ${fmt(e.argent)} en caisse` : 'Version gestion : recrute, fais le planning, tiens tes comptes.';
   acc.hidden = false;
+  // Nouvelle partie : on choisit la difficulté
+  let mode = 'normal';
+  const modes = document.getElementById('accueil-modes'), desc = document.getElementById('mode-desc');
+  modes.hidden = dejaJoue;
+  const majMode = () => { modes.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('choisi', b.dataset.mode === mode)); desc.textContent = DIFFICULTES[mode].desc; };
+  modes.addEventListener('click', ev => { const b = ev.target.closest('[data-mode]'); if (b) { mode = b.dataset.mode; majMode(); sons.clic(); } });
+  majMode();
   document.getElementById('jouer').onclick = () => {
+    if (!dejaJoue) J.reglerDifficulte(e, mode);
     if (nouveau) { e.meta.nomCafe = J.nettoyerNom(champ.value) || J.NOM_PAR_DEFAUT; scene.majDecor(e); sauver(); champ.blur(); }
     acc.classList.add('part'); setTimeout(() => { acc.hidden = true; }, 450); sons.clic(); enJeu = true; plateforme.jeuDebut(); };
 } else { enJeu = true; plateforme.jeuDebut(); }
@@ -189,5 +208,5 @@ if (!window.PLATEFORME && 'serviceWorker' in navigator && (location.protocol ===
 
 // Outils de test, seulement avec ?debug dans l'adresse
 if (new URLSearchParams(location.search).has('debug')) {
-  window.__n15x = { plateforme, scene, get e() { return e; }, set e(v) { e = v; scene.majDecor(e); }, J, jeu, majDecor: () => scene.majDecor(e), pas: (n = 10, dt = .1) => { for (let k = 0; k < n; k++) image(dt); } };
+  window.__n15x = { plateforme, scene, ui, get e() { return e; }, set e(v) { e = v; scene.majDecor(e); }, J, jeu, majDecor: () => scene.majDecor(e), pas: (n = 10, dt = .1) => { for (let k = 0; k < n; k++) image(dt); } };
 }

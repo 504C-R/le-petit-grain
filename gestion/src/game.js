@@ -7,7 +7,7 @@ import {
   METEOS, FIABILITE_PREVISION, BOISSONS, MURS, SOLS, FORMULES, DEFIS, DOSAGE, PRENOMS_AVIS,
   CAPACITE, DEMANDE_BASE, RESERVE_KG, PERSONNEL, TRAITS, PRENOMS_EMPLOYES, MOIS, ENERGIE, PRETS, DECOUVERT, ARGENT_DEPART,
   JOURS_SEMAINE, AFFLUENCE_JOUR, NOMS_MOIS, SAISONS, VIENNOISERIES, NOTE, NOTORIETE, CONSOMMABLES,
-  CARTE, VARIETE, DEUXIEME_TASSE, MARKETING, FIDELITE,
+  CARTE, VARIETE, DEUXIEME_TASSE, MARKETING, FIDELITE, DIFFICULTES, MEDAILLES, NOUVELLES_QUARTIER,
 } from './data.js';
 const CA = Object.fromEntries(CARTE.map(p => [p.id, p]));
 const MK = Object.fromEntries(MARKETING.map(m => [m.id, m]));
@@ -47,7 +47,7 @@ const candidatsDeDepart = () => [
 export function nouvelEtat(meta = nouvelleMeta()) {
   return {
     version: 5,
-    argent: ARGENT_DEPART, rep: NOTE.depart, nbAvis: 0, notoriete: NOTORIETE.depart, prix: 1.5, maison: 'premier',
+    argent: (DIFFICULTES[meta.difficulte] || DIFFICULTES.normal).argent, rep: NOTE.depart, nbAvis: 0, notoriete: NOTORIETE.depart, prix: 1.5, maison: 'premier',
     stock: Object.fromEntries(GRAINS.map(g => [g.id, g.id === 'premier' ? 3 * DOSES_SAC : 0])),
     debloques: ['premier'], achats: [], commandes: [], livraisonsMatin: [],
     machines: ['occasion', null, null], moulin: 'manivelle', fournisseur: 'grossiste',
@@ -58,7 +58,7 @@ export function nouvelEtat(meta = nouvelleMeta()) {
     age: Object.fromEntries(GRAINS.map(g => [g.id, 0])), tarifs: [1, 1, 1, 1], calcaire: [0, 0, 0],
     meteo: 'nuages', meteoDemain: 'soleil', boisson: 'aucune', deco: { mur: 'creme', sol: 'parquet', vus: ['creme', 'parquet'] }, formules: {}, defi: null,
     dosage: DOSAGE.reference, service: 1,
-    carte: carteDepart(), campagnes: [], fidelite: { active: false, membres: 0 },
+    carte: carteDepart(), campagnes: [], fidelite: { active: false, membres: 0 }, gazettes: [],
     evts: [], ruptureDepuis: 0, rupturesVues: 0, lait: 0, laitVide: false,
     phase: 'service', horloge: HORAIRES.ouverture, nuitReste: 0, jour: 1,
     journee: nouvelleJournee(), bilans: [], decision: null, decisionsDuJour: [],
@@ -414,7 +414,7 @@ export function evolutionFidelite(e, clients, sat) {
 export function demandeParHeure(e) {
   if (!ouvert(e)) return 0;
   const f = formuleDuMoment(e);
-  return DEMANDE_BASE * e.notoriete * (.4 + e.rep * .2) * attrait(e) * courbeHeure(e.horloge) * AFFLUENCE_JOUR[jourSemaine(e)] * saison(e).demande
+  return DEMANDE_BASE * difficulte(e).demande * e.notoriete * (.4 + e.rep * .2) * attrait(e) * courbeHeure(e.horloge) * AFFLUENCE_JOUR[jourSemaine(e)] * saison(e).demande
     * multMeteo(e) * facteurPrix(e) * (1 + (f?.demande || 0)) * multEvts(e) * (villeInfo(e).demande || 1)
     * multVariete(e) * multCampagnes(e) * (1 + bonusFidelite(e));
 }
@@ -555,7 +555,7 @@ export function choisirGrain(e, id) { if (!e.debloques.includes(id)) return 'ver
 
 // ---------- Finances : charges, mois, prêts, découvert ----------
 export const energieJour = e => ENERGIE.base + ENERGIE.parMachine * nbMachines(e) + (a(e, 'clim') ? ENERGIE.clim : 0) + (a(e, 'cheminee') ? ENERGIE.cheminee : 0);
-export const loyerMois = e => Math.round((villeInfo(e).loyer || 1) * (MOIS.loyer + (a(e, 'agrandir') ? MOIS.agrandir : 0) + (a(e, 'etage') ? MOIS.etage : 0)) + (a(e, 'terrasse') ? MOIS.terrasse : 0));
+export const loyerMois = e => Math.round(difficulte(e).loyer * (villeInfo(e).loyer || 1) * (MOIS.loyer + (a(e, 'agrandir') ? MOIS.agrandir : 0) + (a(e, 'etage') ? MOIS.etage : 0)) + (a(e, 'terrasse') ? MOIS.terrasse : 0));
 export const entretienMois = e => Math.round(machinesInstallees(e).reduce((s, m) => s + m.prix, 0) * MOIS.entretien + MO[e.moulin].prix * MOIS.entretien);
 export function chargesJour(e) {
   const salaires = masseSalarialeJour(e), energie = energieJour(e), agios = e.argent < 0 ? -e.argent * DECOUVERT.agios : 0;
@@ -591,11 +591,64 @@ function finDuMois(e, arrivees) {
   }
   const avantImpot = resultatMois(m);
   m.impots = avantImpot > 0 ? Math.round(avantImpot * MOIS.impot) : 0; e.argent -= m.impots;
-  m.resultat = avantImpot - m.impots; m.numero = e.historiqueMois.length + 1; m.nom = NOMS_MOIS[(Math.floor((e.jour - 1) / MOIS.jours)) % 12];
+  e.stats.mois = (e.stats.mois || e.historiqueMois.length) + 1;
+  m.resultat = avantImpot - m.impots; m.numero = e.stats.mois; m.nom = NOMS_MOIS[(Math.floor((e.jour - 1) / MOIS.jours)) % 12];
   e.historiqueMois = [...e.historiqueMois.slice(-11), m];
   e.mois = nouveauMois();
   arrivees.push({ finMois: m });
+  if (m.numero % 12 === 0) arrivees.push({ finAnnee: bilanAnnee(e) });
 }
+
+// ---------- Difficulté ----------
+export const difficulte = e => DIFFICULTES[e.meta?.difficulte] || DIFFICULTES.normal;
+export const seuilFaillite = e => difficulte(e).faillite;
+// Se choisit au tout début (avant la première journée) : l'argent de départ suit
+export function reglerDifficulte(e, id) {
+  if (!DIFFICULTES[id]) return 'indispo';
+  if (e.jour > 1 || e.stats.nuits > 0) return 'trop tard';
+  const avant = difficulte(e).argent;
+  e.meta.difficulte = id; e.argent += DIFFICULTES[id].argent - avant;
+  return 'ok';
+}
+
+// ---------- Bilan de l'année : chiffres des 12 derniers mois et médaille ----------
+export function bilanAnnee(e) {
+  const ms = e.historiqueMois.slice(-12);
+  const ca = ms.reduce((s, m) => s + m.ca, 0), resultat = ms.reduce((s, m) => s + m.resultat, 0);
+  const meilleur = ms.reduce((b, m) => (!b || m.resultat > b.resultat ? m : b), null);
+  const medaille = resultat >= MEDAILLES.or && e.rep >= MEDAILLES.noteOr ? 'or' : resultat >= MEDAILLES.argent ? 'argent' : 'bronze';
+  const b = { annee: Math.round((e.stats.mois || 12) / 12), ca, resultat, meilleur: meilleur?.nom, note: e.rep, clients: Math.round(e.meta.clientsTotal || 0), equipe: e.equipe.length - 1, travaux: e.achats.length, medaille };
+  e.meta.annees = [...(e.meta.annees || []), b];
+  return b;
+}
+
+// ---------- La Gazette du quartier : chaque dimanche soir, les nouvelles de la semaine ----------
+export function genererGazette(e, rnd = Math.random) {
+  const semaine = e.bilans.slice(-7), avant = e.bilans.slice(-14, -7);
+  if (!semaine.length) return null;
+  const somme = (l, k) => l.reduce((s, b) => s + (b[k] || 0), 0);
+  const ca = somme(semaine, 'recettes'), caAvant = somme(avant, 'recettes'), res = somme(semaine, 'benefice'), clients = somme(semaine, 'clients'), perdus = somme(semaine, 'perdus');
+  const top = semaine.reduce((b, x) => (!b || x.recettes > b.recettes ? x : b), null);
+  const evol = caAvant > 0 ? ca / caAvant - 1 : null;
+  const fmtE = x => `${Math.round(x).toLocaleString('fr-FR')} €`, nom = nomCafe(e);
+  const titre = evol == null ? `${nom} ouvre ses portes : le quartier découvre le café de mamie Odette`
+    : evol > .12 ? `${nom} : une semaine en or, le quartier se presse au comptoir`
+    : evol < -.12 ? `Semaine difficile pour ${nom}, qui compte bien rebondir`
+    : perdus > clients * .2 ? `Chez ${nom}, on fait la queue jusque sur le trottoir`
+    : `${nom} tient le cap, tasse après tasse`;
+  const articles = [
+    { titre: 'Les chiffres de la semaine', texte: `${Math.round(clients).toLocaleString('fr-FR')} clients servis et ${fmtE(ca)} de chiffre d’affaires${evol == null ? '' : ` (${evol >= 0 ? '+' : '−'}${Math.round(Math.abs(evol) * 100)} % sur une semaine)`}. Résultat : ${res >= 0 ? '' : '−'}${fmtE(Math.abs(res))}. La meilleure journée : ${top.date.toLowerCase()}, avec ${fmtE(top.recettes)}.` },
+  ];
+  const avis = semaine.flatMap(b => b.avis || []).sort((x, y) => y.etoiles - x.etoiles);
+  if (avis.length) { const a = avis[Math.floor(rnd() * Math.min(3, avis.length))]; articles.push({ titre: 'La parole aux clients', texte: `« ${a.texte} » nous confie ${a.nom}. La note du café est de ${e.rep.toFixed(2).replace('.', ',')} étoiles.` }); }
+  if (perdus > clients * .15) articles.push({ titre: 'Le courrier des lecteurs', texte: `« J’ai attendu si longtemps que je suis reparti sans mon café ! » Cette semaine, environ ${Math.round(perdus)} clients sont repartis sans être servis. Une personne de plus derrière le comptoir ?` });
+  if (cafemaxOuvert(e)) articles.push({ titre: 'Concurrence', texte: pick(rnd, ['CaféMax annonce une nouvelle carte de fidélité « super-points ». Les habitués du quartier restent sceptiques.', 'En face, CaféMax baisse encore ses prix. La qualité, elle, ne suit pas toujours, murmurent les clients.', 'CaféMax recrute à tour de bras : les baristas du quartier sont très demandés.']) });
+  articles.push({ titre: 'Dans le quartier', texte: pick(rnd, NOUVELLES_QUARTIER) });
+  const g = { numero: (e.gazettes?.length ? e.gazettes.at(-1).numero : 0) + 1, date: dateTexte(e), titre, articles };
+  e.gazettes = [...(e.gazettes || []).slice(-3), g];
+  return g;
+}
+const pick = (rnd, l) => l[Math.min(l.length - 1, Math.floor(rnd() * l.length))];
 
 // ---------- Pannes et événements ----------
 export function choisirPanne(e, rnd) {
@@ -818,12 +871,12 @@ function fermer(e, rnd = Math.random) {
   e.st.forEach(s => { s.panne = null; s.coup = 0; });
   e.stats.nuits++;
   if (e.jour % MOIS.jours === 0) finDuMois(e, arrivees);
-  if (e.jour % 7 === 0) genererCandidats(e, rnd);
+  if (e.jour % 7 === 0) { genererCandidats(e, rnd); const g = genererGazette(e, rnd); if (g) arrivees.push({ gazette: g }); }
   if (e.abonnement.grain && e.abonnement.kg > 0) {
     const place = Math.floor((capaciteReserve(e) - totalStock(e)) / DOSES_SAC);
     if (place >= 1) { const r = commander(e, e.abonnement.grain, Math.min(e.abonnement.kg, place), true); if (r !== 'ok') arrivees.push({ abonnementRate: r }); }
   }
-  if (e.argent < DECOUVERT.faillite) {
+  if (e.argent < seuilFaillite(e)) {
     if (!e.sauvetage) { e.sauvetage = true; e.argent += 10000; arrivees.push({ sauvetage: true }); }
     else { e.faillite = true; arrivees.push({ faillite: true }); }
   } else if (e.argent < DECOUVERT.alerte) arrivees.push({ alerteBanque: true });

@@ -588,3 +588,53 @@ body { color:var(--encre); }
 .carte-argent #argent::before { content:'En caisse'; display:block; font:800 10px Nunito, sans-serif; letter-spacing:.05em; text-transform:uppercase; color:var(--cafe-doux); margin-bottom:1px; }
 .etoiles::before { content:'Note '; font:800 10px Nunito, sans-serif; letter-spacing:.05em; text-transform:uppercase; color:var(--cafe-doux); }
 .puce[data-goulot], .puce[data-journal], .puce[data-stock], .puce[data-panne] { cursor:pointer; }
+
+/* ---------- v5.4 : clients vivants ---------- */
+.humeur { position:absolute; transform:translate(-50%,-100%); width:30px; height:30px; border-radius:50%; background:rgba(251,247,241,.95); box-shadow:0 2px 8px rgba(30,20,14,.25); display:grid; place-items:center; font-size:16px; pointer-events:none; animation:humeur 2.2s ease-out forwards; }
+@keyframes humeur { 0% { opacity:0; margin-top:8px; transform:translate(-50%,-100%) scale(.6); } 12% { opacity:1; margin-top:0; transform:translate(-50%,-100%) scale(1); } 80% { opacity:1; } 100% { opacity:0; margin-top:-14px; } }
+.fiche-client { position:absolute; transform:translate(-50%,-100%); width:210px; background:rgba(251,247,241,.97); border:1px solid var(--filet); border-radius:12px; box-shadow:var(--ombre-douce); padding:8px 11px; pointer-events:none; animation:parole 5s ease-out forwards; display:flex; flex-direction:column; gap:2px; z-index:3; }
+.fiche-client b { font:700 15px Georgia, serif; color:var(--encre); }
+.fiche-client small { font-size:11px; font-weight:700; color:var(--cafe-doux); }
+.fiche-client .cmd { font-size:11.5px; font-weight:800; color:var(--encre); }
+.fiche-client i { font-size:12px; font-weight:600; color:var(--encre); margin-top:2px; }
+
+/* ---------- v5.4 : Gazette, bilan de l'année, choix de difficulté ---------- */
+#papier { position:fixed; inset:0; background:rgba(30,20,14,.45); backdrop-filter:blur(3px); z-index:30; display:grid; place-items:center; padding:16px; overflow:auto; }
+#papier[hidden] { display:none; }
+.papier { width:min(100%, 520px); max-height:88dvh; overflow:auto; background:#F4EEE2; color:#231A14; border-radius:6px; padding:22px 22px 16px; box-shadow:0 20px 60px rgba(0,0,0,.35); font-family:Georgia, 'Times New Roman', serif; }
+.gz-tete { text-align:center; border-bottom:3px double #231A14; padding-bottom:8px; margin-bottom:12px; }
+.gz-tete span { display:block; font:700 10.5px Nunito, sans-serif; letter-spacing:.08em; text-transform:uppercase; color:#6B5A4E; }
+.gz-tete h2 { font:700 30px Georgia, serif; letter-spacing:-.01em; margin:4px 0; }
+.gz-une { font:700 21px Georgia, serif; line-height:1.2; margin-bottom:12px; }
+.gz-articles { column-count:2; column-gap:18px; column-rule:1px solid #D6CBB8; }
+.gz-articles article { break-inside:avoid; margin-bottom:12px; }
+.gz-articles h4 { font:700 13px Nunito, sans-serif; text-transform:uppercase; letter-spacing:.04em; margin-bottom:3px; }
+.gz-articles p { font-size:14px; line-height:1.45; text-align:justify; hyphens:auto; }
+.papier .btn { margin:14px auto 0; width:160px; }
+.medaille { text-align:center; margin:6px 0 14px; }
+.medaille span { font-size:54px; display:block; }
+.medaille b { font:700 20px Georgia, serif; }
+.medaille p { font-size:14px; color:#4A3A30; margin-top:3px; }
+.chiffres-annee { display:grid; grid-template-columns:1fr 1fr; gap:6px 18px; border-top:1px solid #D6CBB8; border-bottom:1px solid #D6CBB8; padding:10px 0; }
+.chiffres-annee div { display:flex; justify-content:space-between; gap:8px; font:700 12.5px Nunito, sans-serif; color:#6B5A4E; }
+.chiffres-annee b { font:700 14px Georgia, serif; color:#231A14; }
+.gz-mot { font-style:italic; font-size:14.5px; line-height:1.45; margin:12px 0 4px; }
+@media (max-width:480px) { .gz-articles { column-count:1; } .gz-tete h2 { font-size:24px; } .chiffres-annee { grid-template-columns:1fr; } }
+.une-gazette { width:100%; display:flex; align-items:center; gap:10px; text-align:left; border:1px solid var(--filet); background:#F4EEE2; border-radius:10px; padding:8px 10px; margin-bottom:8px; cursor:pointer; font-family:inherit; color:var(--encre); }
+.une-gazette > span { font-size:22px; }
+.une-gazette div { flex:1; display:flex; flex-direction:column; }
+.une-gazette b { font:700 13px Georgia, serif; }
+.une-gazette small { font-size:11.5px; font-weight:700; color:var(--cafe-doux); }
+.une-gazette em { font:800 12px Nunito; font-style:normal; color:var(--accent); }
+.une-gazette.nouvelle { border-left:3px solid var(--accent); }
+.modes { display:flex; flex-direction:column; gap:5px; align-items:center; margin:6px 0 2px; }
+.modes[hidden] { display:none; }
+.modes > span { font:800 11px Nunito; letter-spacing:.06em; text-transform:uppercase; color:var(--cafe-doux); }
+.modes div { display:flex; gap:4px; background:#EFE6DA; border-radius:10px; padding:3px; }
+.modes button { border:0; background:none; border-radius:8px; padding:6px 10px; font:800 13px Nunito; color:var(--cafe-doux); cursor:pointer; }
+.modes button.choisi { background:#fff; color:var(--encre); box-shadow:0 1px 2px rgba(30,20,14,.15); }
+.modes small { font-size:11.5px; font-weight:700; color:var(--cafe-doux); text-align:center; max-width:300px; min-height:30px; }
+/* Écran d'accueil au même ton que le reste : titre en serif, bouton espresso */
+.accueil-carte h1 { font-family:Georgia, 'Times New Roman', serif; font-weight:700; letter-spacing:-.01em; }
+.accueil-carte { box-shadow:var(--ombre-douce); }
+.accueil-carte img { box-shadow:0 2px 10px rgba(30,20,14,.18); border-radius:12px; }

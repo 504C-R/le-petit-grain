@@ -46,6 +46,7 @@
       <label for="nom-cafe">Comment s’appellera ton café ?</label>
       <input id="nom-cafe" maxlength="22" placeholder="Le Petit Grain" autocomplete="off" autocapitalize="words" enterkeyhint="go">
     </div>
+    <div class="modes" id="accueil-modes" hidden><span>Difficulté</span><div><button data-mode="tranquille">Tranquille</button><button data-mode="normal" class="choisi">Normal</button><button data-mode="exigeant">Exigeant</button></div><small id="mode-desc"></small></div>
     <button class="btn" id="jouer">Jouer</button>
     <small id="accueil-info"></small>
   </div>
@@ -155,6 +156,8 @@
     <button class="btn miel" id="rush">Vitesse<small id="rush-txt">▶ ×1</small></button>
   </div>
 </div>
+
+<div id="papier" hidden><div class="papier"><div id="papier-contenu"></div><button class="btn" id="papier-fermer">Refermer</button></div></div>
 
 <div id="bulle" hidden>
   <div class="qui"><span class="avatar">👵</span><span id="bulle-titre">Mamie Odette</span></div>

@@ -54,6 +54,49 @@ export function creerUI({ jeu, scene }) {
     el.style.left = x + 'px'; el.style.top = y + 'px';
     $('labels').appendChild(el); setTimeout(() => el.remove(), 3600);
   }
+  // L'humeur d'un client : une petite pastille ronde au-dessus de sa tête, qui s'efface
+  function humeur(pos, icone) {
+    const [x, y] = scene.projeter(pos);
+    const el = document.createElement('div'); el.className = 'humeur'; el.textContent = icone;
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+    $('labels').appendChild(el); setTimeout(() => el.remove(), 2200);
+  }
+  // ---------- Le papier : la Gazette du quartier et le bilan de l'année, mis en page comme un journal ----------
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  function ouvrirPapier(html) { $('papier-contenu').innerHTML = html; $('papier').hidden = false; $('papier').scrollTop = 0; sons.bulle(); }
+  $('papier-fermer').onclick = () => { $('papier').hidden = true; sons.clic(); };
+  function afficherGazette(g) {
+    if (!g) return;
+    ouvrirPapier(`<div class="gz-tete"><span>N° ${g.numero} · ${esc(g.date)}</span><h2>La Gazette du quartier</h2><span>Le journal de ceux qui aiment leur rue</span></div>
+      <h3 class="gz-une">${esc(g.titre)}</h3><div class="gz-articles">` + g.articles.map(a => `<article><h4>${esc(a.titre)}</h4><p>${esc(a.texte)}</p></article>`).join('') + `</div>`);
+  }
+  function annoncerGazette(g) { toast(`📰 <b>La Gazette du quartier</b> est parue : « ${esc(g.titre)} ». À lire dans le journal du soir.`, 6000); }
+  function afficherAnnee(b) {
+    const med = { or: ['🥇', 'Médaille d’or', 'Un café d’exception. Tout le quartier en parle.'], argent: ['🥈', 'Médaille d’argent', 'Une belle affaire, qui tourne et qui plaît.'], bronze: ['🥉', 'Médaille de bronze', 'Le café tient debout : l’année prochaine sera la bonne.'] }[b.medaille];
+    const ligne = (n, v) => `<div><span>${n}</span><b>${v}</b></div>`;
+    ouvrirPapier(`<div class="gz-tete"><span>Année ${b.annee}</span><h2>Un an au café ${esc(J.nomCafe(E()))}</h2><span>Le bilan de mamie Odette</span></div>
+      <div class="medaille"><span>${med[0]}</span><b>${med[1]}</b><p>${med[2]}</p></div>
+      <div class="chiffres-annee">${ligne('Chiffre d’affaires', fmt(b.ca))}${ligne('Résultat de l’année', montant(b.resultat))}${ligne('Clients servis', b.clients.toLocaleString('fr-FR'))}${ligne('Note', virg(b.note, 2) + ' ★')}${ligne('Meilleur mois', b.meilleur || '—')}${ligne('Équipe', `${b.equipe} employé${b.equipe > 1 ? 's' : ''}`)}${ligne('Travaux faits', b.travaux)}</div>
+      <p class="gz-mot">« ${b.medaille === 'or' ? 'Je n’aurais jamais osé rêver ça pour mon vieux café. Merci, ma petite.' : b.medaille === 'argent' ? 'Tu as fait du chemin depuis la vieille machine d’occasion ! Pour l’or, il faudra des clients encore plus contents.' : 'Une année, c’est déjà beaucoup. Regarde tes comptes, ajuste, et on repart.'} » — Mamie Odette</p>
+      <p class="legende">Le café continue : une nouvelle année commence.</p>`);
+    sons.succes();
+  }
+
+  // La fiche d'un client touché : qui il est, ce qu'il a commandé, ce qu'il pense
+  let ficheT = null;
+  function ficheClient(p, pos) {
+    document.querySelectorAll('.fiche-client').forEach(x => x.remove());
+    const [x, y] = scene.projeter(pos);
+    const el = document.createElement('div'); el.className = 'fiche-client';
+    const qui = p.habitue ? 'Un habitué du café' : `${p.age} ans · ${p.metier}`;
+    const etat = p.parti ? 'Reparti sans être servi' : p.servi ? `A pris : ${p.commande.join(', ')}` : `Attend : ${p.commande.join(', ')}`;
+    el.innerHTML = '<b></b><small></small><span class="cmd"></span><i></i>';
+    el.querySelector('b').textContent = p.nom; el.querySelector('small').textContent = qui;
+    el.querySelector('.cmd').textContent = etat; el.querySelector('i').textContent = `« ${p.pense} »`;
+    el.style.left = Math.max(110, Math.min(innerWidth - 110, x)) + 'px'; el.style.top = Math.max(150, y) + 'px';
+    $('labels').appendChild(el); sons.clic();
+    clearTimeout(ficheT); ficheT = setTimeout(() => el.remove(), 5000);
+  }
 
   // ---------- Étiquettes des stations ----------
   const etiquettes = STATIONS.map((s, i) => {
@@ -213,6 +256,8 @@ export function creerUI({ jeu, scene }) {
   function ongletBilan(e, soir) {
     const b = e.bilans.at(-1);
     let h = '';
+    const gz = e.gazettes?.at(-1);
+    if (gz) h += `<button class="une-gazette${e.gazetteLue === gz.numero ? '' : ' nouvelle'}" data-gazette><span>📰</span><div><b>La Gazette du quartier · n° ${gz.numero}</b><small>${gz.titre}</small></div><em>${e.gazetteLue === gz.numero ? 'Relire' : 'Lire'}</em></button>`;
     if (b) {
       h += `<div class="journal-bilan"><span>${b.date} · ${Math.round(b.clients)} clients servis</span><b>${fmt(b.recettes)}</b>`
         + `<span>Achats (grain, consommables…)</span><b>−${fmt(b.depenses)}</b><span>Salaires</span><b>−${fmt(b.detail.salaires)}</b><span>Énergie</span><b>−${fmt(b.detail.energie)}</b>`
@@ -565,6 +610,7 @@ export function creerUI({ jeu, scene }) {
     if (d.boisson) { const r = J.choisirBoisson(e, d.boisson); if (r === 'ok') { sons.clic(); jeu.sauver(); } else if (r === 'verrou') toast('Il faut une meilleure note pour cette boisson.'); else if (r === 'ferme') toast('La boisson du jour se prépare le soir.'); majTravaux(); return; }
     if (d.formule) { const [id, v] = d.formule.split(':'), r = J.reglerFormule(e, id, v === '1'); if (r === 'ok') { sons.clic(); jeu.sauver(); } else if (r === 'ferme') toast('Les formules se préparent le soir.'); majTravaux(); return; }
     if (d.courbe) { courbe = d.courbe; sons.clic(); majTravaux(); return; }
+    if ('gazette' in d) { afficherGazette(e.gazettes.at(-1)); e.gazetteLue = e.gazettes.at(-1).numero; jeu.sauver(); majTravaux(); return; }
     if (d.produit) {
       const [id, champ, v] = d.produit.split(':'), r = J.regleProduit(e, id, champ, +v);
       if (r === 'ok') { sons.clic(); jeu.sauver(); scene.majDecor(e); if (champ === 'on') toast(+v ? `${J.CATALOGUE_CARTE[id].icone} <b>${J.CATALOGUE_CARTE[id].nom}</b> à la carte.` : `${J.CATALOGUE_CARTE[id].nom} retiré de la carte.`); }
@@ -858,5 +904,5 @@ export function creerUI({ jeu, scene }) {
       b.onclick = () => { const msg = J.choisirDecision(E(), k); if (msg) toast(msg, 5000); sons.clic(); jeu.sauver(); majDecision(E()); }; z.appendChild(b); });
   }
   function ouvrirJournal(o) { if (o) onglet = o; ouvrir('p-travaux'); majTravaux(); }
-  return { maj, toast, bulle, pop, parole, fermer, toucherStation, objectifAtteint, finJournee, ouvrirJournal, majVitesse, tutoriel };
+  return { maj, toast, bulle, pop, parole, humeur, ficheClient, annoncerGazette, afficherGazette, afficherAnnee, fermer, toucherStation, objectifAtteint, finJournee, ouvrirJournal, majVitesse, tutoriel };
 }

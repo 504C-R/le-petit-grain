@@ -394,3 +394,26 @@ export const MARKETING = [
 // depart : part des membres qui décroche chaque jour ; bonusMax et demi : clients en plus (bonus = max × m / (m + demi)) ;
 // remise : ce que coûte le café offert, sur les achats des membres
 export const FIDELITE = { lancement: 150, inscription: .05, depart: .012, bonusMax: .15, demi: 600, remise: .1, partMax: .6 };
+
+// =================== Modes de difficulté, Gazette ===================
+// Choisi au début de la partie : argent de départ, affluence, loyer et seuil de faillite
+export const DIFFICULTES = {
+  tranquille: { nom: 'Tranquille', desc: 'Plus d’argent au départ, des clients plus nombreux, un loyer plus doux. Pour profiter.', argent: 6000, demande: 1.12, loyer: .85, faillite: -20000 },
+  normal: { nom: 'Normal', desc: 'L’expérience prévue : il faut gérer, mais on a le droit à l’erreur.', argent: 4000, demande: 1, loyer: 1, faillite: -12000 },
+  exigeant: { nom: 'Exigeant', desc: 'Peu d’argent, moins de clients, un loyer plus cher, une banque sévère. Pour les pros.', argent: 3000, demande: .9, loyer: 1.15, faillite: -6000 },
+};
+// Bilan d'une année : médailles selon le résultat cumulé des 12 mois (et la note pour l'or)
+export const MEDAILLES = { argent: 25000, or: 50000, noteOr: 3.8 };
+// La Gazette du quartier : petites nouvelles tirées au hasard, pour l'ambiance
+export const NOUVELLES_QUARTIER = [
+  'La boulangerie de la rue d’à côté refait sa vitrine : les travaux dureront deux semaines.',
+  'Le marché du samedi accueille un nouveau fromager. Il paraît que son comté est extraordinaire.',
+  'Monsieur Bernard a encore gagné le concours de pétanque du quartier. Il fête ça au café, évidemment.',
+  'La mairie promet de nouveaux bancs sur la place. Les pigeons, eux, sont déjà ravis.',
+  'Un tournage de film a bloqué la rue mardi. Personne n’a reconnu l’acteur principal.',
+  'La bibliothèque lance un club de lecture le jeudi soir. On cherche un endroit chaleureux pour se réunir…',
+  'Le fleuriste du coin propose des bouquets de saison à prix doux tout le mois.',
+  'Les élèves de l’école primaire ont repeint la fresque du préau. Bravo à eux !',
+  'Un vélo jaune attend son propriétaire devant la pharmacie depuis lundi. Mystère.',
+  'La chorale du quartier répète tous les mercredis. On l’entend jusqu’au carrefour.',
+];
