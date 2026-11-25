@@ -10,6 +10,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { nomCafe, prixEffectif, neige, murActuel, solActuel, formuleDuMoment, a, tierMachine, nbMachines, tierMoulin, debitStation, debitMax, panier, pleut, choisirHabitue, cafemaxOuvert, capaciteReserve, prixProduit, produitActif, CATALOGUE_CARTE, partsCarte, ratioPrixCarte, satisfaction, ouvert, avanceeJournee, CATALOGUE_MACHINES } from './game.js';
 import { G, VILLES, INFOS_VILLES } from './data.js';
+import { Grille } from './chemins.js';
 
 // Modèles 3D générés par Blender (tools/blender/modeles.py). Si un fichier manque, on garde les formes simples.
 const NOMS_MODELES = ['machine_occasion', 'machine_neuve', 'machine_pro', 'moulin_manuel', 'moulin_electrique', 'torrefacteur',
@@ -26,19 +27,25 @@ async function chargerModeles(surProgression) {
 
 // Couleurs de l'éclairage selon le moment de la journée (matin, midi, après-midi, soirée)
 const AMBIANCES = [
-  { fond: 0xF2DCC4, soleil: 0xFFD9A8, iSoleil: 2.2, iCiel: .8, fenetre: 0xFFE2B8, lampes: .6 },
-  { fond: 0xEFDDC8, soleil: 0xFFF0DA, iSoleil: 2.6, iCiel: .9, fenetre: 0xCFE9E2, lampes: .4 },
-  { fond: 0xEDD3B8, soleil: 0xFFC890, iSoleil: 2.3, iCiel: .78, fenetre: 0xFFD7A0, lampes: .7 },
-  { fond: 0xC9C2D6, soleil: 0x9FA8D8, iSoleil: .8, iCiel: .55, fenetre: 0x4E5A8A, lampes: 1.6 },
+  { fond: 0xBFE6F5, soleil: 0xFFE2B0, iSoleil: 2.4, iCiel: 1.15, fenetre: 0xFFE2B8, lampes: .6 },
+  { fond: 0xA9DDF3, soleil: 0xFFF4DE, iSoleil: 2.8, iCiel: 1.25, fenetre: 0xCFE9E2, lampes: .4 },
+  { fond: 0xF6D9B0, soleil: 0xFFCF8A, iSoleil: 2.5, iCiel: 1.1, fenetre: 0xFFD7A0, lampes: .7 },
+  { fond: 0x8C8FC9, soleil: 0x9FA8D8, iSoleil: .9, iCiel: .7, fenetre: 0x4E5A8A, lampes: 1.6 },
 ];
 
 const C = { lait: 0xFFFDF8, cafe: 0x4A2E1F, caramel: 0xC8874A, caramelF: 0xA86A33, sauge: 0x8FA98B,
             framboise: 0xD9695F, miel: 0xE8B54A, bois: 0x8A5A3A, cuivre: 0xC07A45, peau: 0xF2C9A5 };
 const COULEUR_SAC = { premier: 0xA89880, robusta: C.caramel, arabica: 0xB9A07A, moka: 0x8FA98B, bourbon: 0xE8B54A, geisha: 0x9C6B8E };
-const HABITS = [0x55657A, 0x8C7A5E, 0x7A4B44, 0x6B7A63, 0x3F4A5A, 0x9A8F84, 0x2F3533, 0xB7AA98];
+const HABITS = [0x4FA3E0, 0xF2B632, 0xE8584F, 0x6CC04A, 0xA77BDB, 0x2FB8B0, 0xF28A3A, 0xF06FA8];
 const CHEVEUX = [0x4A2E1F, 0x2B1B12, 0xE9E1DA, 0x8A4B2B, 0xD9A35C, 0x1E1E1E];
 const PEAUX = [0xF2C9A5, 0xE0B08A, 0xC99A78, 0x9C6B4A, 0xF5D3B8];
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+// Mesures des personnages selon le modèle : hauteur assise, au-dessus de la tête, main (hauteur, côté), taille de la tasse,
+// centre et échelle de la tête (pour poser les chapeaux dessinés pour l'ancienne tête), cou (hauteur, rayon), hanche (hauteur, côté), épaule
+const FORMES = {
+  cartoon: { assis: -.07, tete: 1.62, main: [.62, .27], tasse: .9, teteC: 1.18, teteS: 1.16, teteSy: 1, cou: [.98, .09], hanche: [.62, .3], epaule: .98 },
+  realiste: { assis: -.42, tete: 1.95, main: [.8, .23], tasse: .7, teteC: 1.66, teteS: .48, teteSy: 1.08, cou: [1.46, .075], hanche: [.98, .27], epaule: 1.46 },
+};
 
 const mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: .85, metalness: 0, ...o });
 const ombre = m => { m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); return m; };
@@ -52,9 +59,12 @@ function texture(w, h, dessin) {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
 }
 
-// Un personnage qui marche d'un point à l'autre
+// Un personnage qui marche d'un point à l'autre, en contournant les meubles (grille et A*) et en évitant les autres personnes
 class Marcheur {
-  constructor(obj, vitesse) { this.o = obj; this.vitesse = vitesse; this.chemin = []; this.attente = 0; this.t = Math.random() * 10; }
+  static tous = new Set();     // tous les marcheurs présents, pour s'éviter entre eux
+  static grille = null;        // la carte des obstacles du café (src/chemins.js)
+  constructor(obj, vitesse) { this.o = obj; this.vitesse = vitesse; this.chemin = []; this.attente = 0; this.t = Math.random() * 10; this.patience = 0; this.bouge = false; Marcheur.tous.add(this); }
+  quitter() { Marcheur.tous.delete(this); }
   aller(...pts) { this.chemin.push(...pts); return this; }
   libre() { return this.chemin.length === 0 && this.attente <= 0; }
   // Bras et jambes : balancent en marchant, se replient quand on est assis
@@ -69,11 +79,38 @@ class Marcheur {
   }
   maj(dt, facteur = 1) {
     const o = this.o;
-    if (this.attente > 0) { this.attente -= dt * Math.max(facteur, .05); o.position.y = this.assis ? (o.userData.realiste ? -.42 : .1) : 0; this.membres(false); return; }
-    const p = this.chemin[0];
+    this.bouge = false;
+    if (this.attente > 0) { this.attente -= dt * Math.max(facteur, .05); o.position.y = this.assis ? (o.userData.forme ? o.userData.forme.assis : .1) : 0; this.membres(false); return; }
+    let p = this.chemin[0];
     if (!p) { o.position.y = 0; this.membres(false); return; }
     this.assis = false;
+    // La première fois qu'on vise un point, on calcule un chemin qui contourne les meubles (sauf pour s'asseoir : la chaise est là)
+    if (!p.vu && !p.assis && Marcheur.grille) {
+      p.vu = true;
+      const route = Marcheur.grille.chemin(o.position.x, o.position.z, p.x, p.z);
+      if (route.length > 1) { this.chemin.unshift(...route.slice(0, -1).map(q => ({ x: q.x, z: q.z, vu: true }))); p = this.chemin[0]; }
+    }
     const dx = p.x - o.position.x, dz = p.z - o.position.z, d = Math.hypot(dx, dz), pas = this.vitesse * facteur * dt;
+    // Les autres : on s'écarte de ceux qui sont tout près, et on attend son tour si quelqu'un est arrêté juste devant
+    let mx = d > 0 ? dx / d : 0, mz = d > 0 ? dz / d : 0, ax = 0, az = 0, bloque = false;
+    for (const a of Marcheur.tous) {
+      if (a === this || a.fini || a.assis || !a.o.parent || !a.o.visible) continue;
+      const ox = a.o.position.x - o.position.x, oz = a.o.position.z - o.position.z, dd = Math.hypot(ox, oz);
+      if (dd > .6 || dd < 1e-4) continue;
+      const devant = (ox * mx + oz * mz) / dd;
+      if (devant > .7 && dd < .5 && !a.bouge && d > .35) bloque = true;
+      const f = (.6 - dd) / .6; ax -= ox / dd * f; az -= oz / dd * f;
+      // quelqu'un en face : on se décale sur sa droite (comme dans la rue), sinon on se pousserait seulement d'avant en arrière
+      if (devant > .3) { ax -= mz * f * 1.2; az += mx * f * 1.2; }
+    }
+    if (bloque && this.patience < 1.5) { this.patience += dt * Math.max(facteur, .2); o.position.y = 0; this.membres(false); return; }
+    if (!bloque) this.patience = Math.max(0, this.patience - dt);
+    if ((ax || az) && (d > .3 || (!p.fn && !p.attente && !p.assis))) {
+      let nx = mx + ax * 1.3, nz = mz + az * 1.3; const n = Math.hypot(nx, nz) || 1; nx /= n; nz /= n;
+      const g = Marcheur.grille;   // on ne s'écarte pas dans un meuble
+      if (!g || g.libre(o.position.x + nx * .25, o.position.z + nz * .25)) { mx = nx; mz = nz; }
+    }
+    this.bouge = true;
     if (d <= pas) {
       o.position.x = p.x; o.position.z = p.z; o.position.y = 0;
       this.chemin.shift();
@@ -83,8 +120,8 @@ class Marcheur {
       if (p.fn) p.fn(this);
       return;
     }
-    o.position.x += dx / d * pas; o.position.z += dz / d * pas;
-    let diff = Math.atan2(dx, dz) - o.rotation.y;
+    o.position.x += mx * pas; o.position.z += mz * pas;
+    let diff = Math.atan2(mx, mz) - o.rotation.y;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff)); o.rotation.y += diff * Math.min(1, dt * 12);
     this.t += dt * facteur; o.position.y = Math.abs(Math.sin(this.t * 11)) * (o.userData.membres ? .015 : .03);
     this.membres(true);
@@ -111,7 +148,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.0;
+  renderer.toneMappingExposure = 1.02;
   conteneur.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -131,10 +168,10 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   // Post-traitement (graphismes « beaux ») : un halo doux autour de ce qui brille (lampes, lanternes, guirlande)
   const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 4 }));
   composer.addPass(new RenderPass(scene, cam));
-  const halo = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), .22, .4, 1.25);
+  const halo = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), .3, .45, 1.2);
   // Étalonnage : couleurs un peu moins saturées et coins assombris, comme une photo
   const etalonnage = new ShaderPass({
-    uniforms: { tDiffuse: { value: null }, force: { value: .32 }, couleur: { value: .88 } },
+    uniforms: { tDiffuse: { value: null }, force: { value: .12 }, couleur: { value: 1.22 } },
     vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: `uniform sampler2D tDiffuse; uniform float force; uniform float couleur; varying vec2 vUv;
       void main() { vec4 c = texture2D(tDiffuse, vUv); vec2 d = vUv - .5;
@@ -159,7 +196,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   }
   addEventListener('resize', redim);
 
-  const ciel = new THREE.HemisphereLight(0xF4EDE4, 0x8C6A50, .8);
+  const ciel = new THREE.HemisphereLight(0xFFF6E6, 0x9BC46A, 1.15);
   scene.add(ciel);
   const soleil = new THREE.DirectionalLight(0xFFE2BC, 2.5);
   soleil.position.set(7, 14, 9);
@@ -267,6 +304,14 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     put(ombre(new THREE.Mesh(new THREE.BoxGeometry(l, .5, p), m)), x, -.31, z);
   }
   trottoir(16.5, 4.4, 1.0, 6.5); trottoir(2.9, 13, 7.75, -2.1);
+  // Une grande pelouse bien verte tout autour, semée de touffes et de fleurs
+  const texHerbe = texture(512, 512, (g, w) => {
+    g.fillStyle = '#7CC24A'; g.fillRect(0, 0, w, w);
+    for (let k = 0; k < 2600; k++) { const x = Math.random() * w, y = Math.random() * w, t = Math.random(); g.fillStyle = t < .5 ? 'rgba(98,170,52,.55)' : 'rgba(150,212,92,.5)'; g.fillRect(x, y, 2 + t * 3, 5 + t * 6); }
+    for (let k = 0; k < 40; k++) { const x = Math.random() * w, y = Math.random() * w; g.fillStyle = ['#FFFFFF', '#FFE45C', '#FF8FB8'][k % 3]; g.beginPath(); g.arc(x, y, 3.5, 0, Math.PI * 2); g.fill(); g.fillStyle = '#F2B632'; g.beginPath(); g.arc(x, y, 1.4, 0, Math.PI * 2); g.fill(); }
+  });
+  texHerbe.wrapS = texHerbe.wrapT = THREE.RepeatWrapping; texHerbe.repeat.set(10, 10);
+  const pelouse = put(new THREE.Mesh(new THREE.PlaneGeometry(70, 70), mat(0xffffff, { map: texHerbe, roughness: 1 })), 0, -.09, 0); pelouse.rotation.x = -Math.PI / 2; pelouse.receiveShadow = true;
   put(rbox(16.5, .14, .2, 0xB8AA96, .03), 1.0, -.1, 8.7);
   const lumieresRue = [], lanternes = [];
   [[7.7, 5.0], [-6.5, 8.0]].forEach(([x, z]) => {
@@ -320,7 +365,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   const ANCRES = [new THREE.Vector3(-4.85, 1.9, -2.8), new THREE.Vector3(-2.4, 2.3, -3.2), new THREE.Vector3(.4, 2.45, -1.8), new THREE.Vector3(-2.8, 1.6, 2.2)];
   const groupes = [0, 1, 2, 3].map(i => { const g = new THREE.Group(); g.userData.station = i; scene.add(g); return g; });
 
-  const PANTALONS = [0x5C4A3E, 0x3E4A5C, 0x2E2A2A, 0x6E86A8, 0x8A6A55, 0x4A5A3E, 0xB9A07A];
+  const PANTALONS = [0x3E6BB0, 0x5C4A3E, 0x2F8F6B, 0x8A5A3A, 0x4A5A9E, 0xC9A86A, 0x6E86A8];
   function perso(habit, cheveux, { tablier = false, peau = C.peau, pantalon = null } = {}) {
     const p = modele('personnage', { habit, cheveux, peau, ...(pantalon ? { pantalon } : {}) });
     if (p) {
@@ -329,6 +374,8 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
       const n = k => p.getObjectByName(k);
       p.userData.membres = { bg: n('bras_g'), bd: n('bras_d'), jg: n('jambe_g'), jd: n('jambe_d'), kg: n('genou_g'), kd: n('genou_d'), tete: n('tete') };
       p.userData.realiste = !!n('genou_g');
+      // les mesures du modèle chargé : cartoon (grosse tête) ou réaliste (1,72 m)
+      p.userData.forme = n('crane_cartoon') ? FORMES.cartoon : p.userData.realiste ? FORMES.realiste : null;
       return p;
     }
     const g = new THREE.Group();
@@ -672,15 +719,16 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   // un groupe les ramène à la taille et à la hauteur de la nouvelle tête (centre à 1,655, environ deux fois plus petite)
   function groupeTete(p) {
     const g = grp(p);
-    if (p.userData.realiste) { const s = .48; g.scale.set(s, s * 1.08, s); g.position.y = 1.66 - 1.03 * s * 1.08; }
+    const f = p.userData.forme; if (f) { g.scale.set(f.teteS, f.teteS * f.teteSy, f.teteS); g.position.y = f.teteC - 1.03 * f.teteS * f.teteSy; }
     return g;
   }
   // Accessoires des habitués, posés sur la tête
   function accessoire(p, type) {
-    if (type === 'parapluie' && p.userData.realiste) {   // tenu à bout de bras, au-dessus de la tête
+    const f = p.userData.forme;
+    if (type === 'parapluie' && f) {   // tenu à bout de bras, au-dessus de la tête
       const g = grp(p);
-      put(cyl(.01, .01, .9, 0x2E2622, 6), .2, 1.55, .08, g);
-      put(ombre(new THREE.Mesh(new THREE.ConeGeometry(.55, .22, 12, 1, true), mat(pick([0x2E3046, 0x3A3633, 0x5A2E2E, 0x4A5A4A]), { side: THREE.DoubleSide }))), .2, 2.05, .08, g);
+      put(cyl(.012, .012, .9, 0x2E2622, 6), .22, f.tete - .4, .08, g);
+      put(ombre(new THREE.Mesh(new THREE.ConeGeometry(.55, .22, 12, 1, true), mat(pick([C.framboise, C.miel, 0x4FA3E0, 0x6CC04A, 0xA77BDB]), { side: THREE.DoubleSide }))), .22, f.tete + .1, .08, g);
       return g;
     }
     const g = groupeTete(p);
@@ -709,9 +757,10 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   // ---- Agents ----
   const coursier = new Marcheur(put(perso(C.miel, C.cafe, { tablier: true }), -3.45, 0, -2.9), 1.6);
   // le coursier porte le sac sur l'épaule
-  const sacPorte = sac(); sacPorte.scale.setScalar(.62); put(sacPorte, .1, 1.46, -.02, coursier.o); sacPorte.rotation.z = -.25; sacPorte.visible = false;
+  const fc = coursier.o.userData.forme || FORMES.cartoon;
+  const sacPorte = sac(); sacPorte.scale.setScalar(.62); put(sacPorte, .1, fc.epaule, -.02, coursier.o); sacPorte.rotation.z = -.25; sacPorte.visible = false;
   const serveur = new Marcheur(put(perso(C.framboise, CHEVEUX[3], { tablier: true }), -.9, 0, -.7), 2.0);
-  const plateau = put(cyl(.2, .2, .02, 0x3A3633, 18), .1, 1.08, .32, serveur.o); plateau.visible = false;
+  const plateau = put(cyl(.2, .2, .02, C.lait, 18), .1, (serveur.o.userData.forme || FORMES.cartoon).main[0] + .25, .32, serveur.o); plateau.visible = false;
   let clients = [], livreurs = [];
   let etat = null;
   const entree = () => etat && a(etat, 'terrasse') ? { x: 1.9, z: 7.4 } : { x: 1.0, z: 4.5 };
@@ -719,6 +768,26 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
 
   // ---- Applique les travaux au décor ----
   let vue = null, cleEnseigne = '';
+  // ---- La carte des obstacles : tout ce qui est visible et à hauteur de jambes (comptoir, tables, chaises, étagères,
+  // cloison, cartons, plantes, murets…), vu de dessus. Refaite à chaque changement de décor. Les personnages s'en servent pour marcher.
+  const grille = new Grille(); Marcheur.grille = grille;
+  const boiteMesh = new THREE.Box3();
+  function construireGrille() {
+    grille.vider();
+    grille.bloquer(-6.4, 6.3, -4.5, -3.95, 0);   // mur du fond
+    grille.bloquer(-6.5, -5.95, -4.5, 4.1, 0);   // mur de gauche
+    const sources = [...groupes, D.cloison, D.cartons, D.plantes, D.plantesB, D.terrasse, D.emporter, D.boutique, D.etage, D.cheminee, D.jukebox].filter(Boolean);
+    const visible = o => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
+    for (const s of sources) s.traverse(m => {
+      if (!m.isMesh || !visible(m)) return;
+      boiteMesh.setFromObject(m);
+      const b = boiteMesh;
+      if (b.min.y > 1.0 || b.max.y < .12) return;                                     // lampes suspendues, sols, tapis
+      if ((b.max.x - b.min.x) * (b.max.z - b.min.z) > 25) return;                       // grands plans (sol de la réserve…)
+      grille.bloquer(b.min.x, b.max.x, b.min.z, b.max.z, .16);
+    });
+  }
+
   function majDecor(e) {
     etat = e;
     const ag = a(e, 'agrandir');
@@ -760,6 +829,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     // Le guichet et l'escalier prennent la place des plantes du côté droit
     D.plantesB.visible = a(e, 'plantes') && ag && !a(e, 'emporter') && !a(e, 'jukebox');
     verifierArrivees(e); majVille(e);
+    construireGrille();
     const v = a(e, 'terrasse') ? 'terrasse' : ag ? 'grand' : 'petit';
     if (v !== vue) {
       vue = v;
@@ -811,7 +881,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     let proche = null, dMin = 45;
     for (const c of clients) {
       if (c.fini || !c.profil) continue;
-      const [x, y] = projeter(c.o.position.clone().add(new THREE.Vector3(0, c.o.userData.realiste ? 1.0 : .7, 0)));
+      const [x, y] = projeter(c.o.position.clone().add(new THREE.Vector3(0, c.o.userData.forme ? c.o.userData.forme.tete * .5 : .7, 0)));
       const d = Math.hypot(x - ev.clientX, y - ev.clientY); if (d < dMin) { dMin = d; proche = c; }
     }
     if (proche) { surClient(proche.profil, proche.o.position.clone().add(new THREE.Vector3(0, 2, 0))); return; }
@@ -1169,15 +1239,15 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     return { nom: hab ? hab.nom : pick(PRENOMS_CLIENTS), age: hab ? null : age, metier: hab ? 'un habitué' : pick(METIERS), commande, pense, humeur, habitue: !!hab };
   }
 
-  const COULEURS_TENUES = [0x7A3B36, 0xB0894A, 0x5E6E58, 0x3E4C66, 0x6B5A78, 0x3F5E60, 0x9A6A48, 0xE6DDD0, 0x2E2A2A];
+  const COULEURS_TENUES = [0xE8584F, 0xF2B632, 0x6CC04A, 0x4FA3E0, 0xA77BDB, 0x2FB8B0, 0xF28A3A, 0xFFFFFF, 0xF06FA8];
   function habiller(p, cheveux, e) {
-    const g = groupeTete(p), corps = grp(p), vrai = !!p.userData.realiste, r = Math.random, met = e.meteo;
+    const g = groupeTete(p), corps = grp(p), f = p.userData.forme, vrai = !!f, r = Math.random, met = e.meteo;
     const froid = met === 'froid', soleil = met === 'soleil' || met === 'chaleur';
     if (froid && r() < .7) {
       // bonnet à pompon et écharpe
       const c = pick(COULEURS_TENUES), b = put(new THREE.Mesh(new THREE.SphereGeometry(.215, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat(c)), 0, 1.05, 0, g); b.castShadow = true;
       put(sph(.06, C.lait), 0, 1.27, 0, g);
-      if (vrai) put(new THREE.Mesh(new THREE.TorusGeometry(.075, .032, 8, 18), mat(pick(COULEURS_TENUES))), 0, 1.46, 0, corps).rotation.x = Math.PI / 2;   // écharpe
+      if (vrai) put(new THREE.Mesh(new THREE.TorusGeometry(f.cou[1], .035, 8, 18), mat(pick(COULEURS_TENUES))), 0, f.cou[0], 0, corps).rotation.x = Math.PI / 2;   // écharpe
       else put(new THREE.Mesh(new THREE.TorusGeometry(.17, .05, 8, 18), mat(pick(COULEURS_TENUES))), 0, .8, 0, g).rotation.x = Math.PI / 2;
     } else {
       const style = r();
@@ -1189,7 +1259,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     }
     if (soleil && r() < .5) [-.075, .075].forEach(x => put(rbox(.11, .06, .02, 0x1E1E1E, .02), x, 1.01, .2, g));   // lunettes de soleil
     if (r() < .25) {   // sac en bandoulière
-      if (vrai) { const s = put(rbox(.24, .28, .07, pick(COULEURS_TENUES), .03), .27, .98, 0, corps); s.rotation.z = .06; put(cyl(.008, .008, .62, 0x2E2622, 6), .1, 1.22, 0, corps).rotation.z = .55; }
+      if (vrai) { const s = put(rbox(.24, .28, .07, pick(COULEURS_TENUES), .03), f.hanche[1], f.hanche[0], 0, corps); s.rotation.z = .06; put(cyl(.008, .008, .62, 0x2E2622, 6), .1, f.hanche[0] + .24, 0, corps).rotation.z = .55; }
       else { const s = put(rbox(.2, .26, .07, pick(COULEURS_TENUES), .03), .27, .5, 0, g); s.rotation.z = .08; put(cyl(.01, .01, .3, C.cafe, 6), .27, .76, 0, g).rotation.z = .4; }
     }
     // tailles variées (de 1,60 m à 1,85 m environ, et parfois un enfant)
@@ -1438,18 +1508,19 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
       const sert = res.ventes > 0 && !repart;
       const place = sert && Math.random() < .7 ? sieges.find(s => s.libre && TABLES[s.table].g.visible) : null;
       if (place) place.libre = false;
-      const tete = m => m.o.position.clone().add(new THREE.Vector3(0, m.o.userData.realiste ? 1.95 : 1.6, 0));
+      const tete = m => m.o.position.clone().add(new THREE.Vector3(0, m.o.userData.forme ? m.o.userData.forme.tete : 1.6, 0));
       c.profil = profilClient(e, hab);
       // la file d'attente se forme du comptoir vers la porte
       const rang = Math.min(5, clients.filter(x => x.enFile).length);
       c.enFile = true;
       const attente = 1 + (perdus > .1 ? rang * .6 : 0) + (repart ? 2.5 : 0);
       if (repart) setTimeout(() => { if (!c.fini && c.enFile) surHumeur(tete(c), '⏳'); }, 2500);
-      c.aller({ x: 1.0, z: 2.6 }, { x: pick(pointsAttente()), z: -.55 + rang * .55, face: Math.PI, attente, fn: m => {
+      c.aller({ x: 1.35, z: 2.6 },   // on entre par la droite de la porte, on ressort par la gauche
+        { x: pick(pointsAttente()), z: -.55 + rang * .55, face: Math.PI, attente, fn: m => {
         m.enFile = false;
         if (sert) {
-          const ta = modele('tasse'); if (ta) { put(ta, .23, m.o.userData.realiste ? .8 : .5, .08, m.o); if (m.o.userData.realiste) ta.scale.setScalar(.7); } else put(cyl(.07, .055, .14, C.lait, 10), .2, .62, .17, m.o);
-          gainEnAttente = 0;   // pas d’argent qui vole : la caisse se lit en haut de l’écran
+          const ta = modele('tasse'); if (ta) { const f = m.o.userData.forme; put(ta, f ? f.main[1] : .23, f ? f.main[0] : .5, .08, m.o); if (f) ta.scale.setScalar(f.tasse); } else put(cyl(.07, .055, .14, C.lait, 10), .2, .62, .17, m.o);
+          if (gainEnAttente > 0) { surPop(tete(m), '+' + fmt(gainEnAttente)); gainEnAttente = 0; lancerPieces(tete(m)); }   // des pièces qui volent jusqu'à la caisse
           m.profil.servi = true;
           if (m.habitue) surHabitue(m.habitue, tete(m).add(new THREE.Vector3(0, .5, 0)));
           else if (m.profil.humeur && Math.random() < .45) surHumeur(tete(m), m.profil.humeur);
@@ -1457,7 +1528,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
         else surPop(tete(m), 'Plus de café ?!', true);
       } });
       if (place) c.aller({ x: place.x, z: place.z + .9 }, { x: place.x, z: place.z, face: place.face, assis: true, attente: 3 + Math.random() * 3, fn: () => { place.libre = true; } });
-      c.aller({ x: 1.0, z: 2.8 }, { x: en.x, z: en.z, fn: m => { m.fini = true; } });
+      c.aller({ x: .65, z: 2.8 }, { x: en.x, z: en.z, fn: m => { m.fini = true; } });
       clients.push(c);
     }
     for (const c of clients) {
@@ -1467,7 +1538,7 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
       if (c.chien) majChien(c, dt);
     }
     for (const c of livreurs) c.maj(dt, 1);
-    const nettoyer = liste => liste.filter(c => { if (c.fini) { scene.remove(c.o); if (c.chien) scene.remove(c.chien.o); return false; } return true; });
+    const nettoyer = liste => liste.filter(c => { if (c.fini) { c.quitter(); scene.remove(c.o); if (c.chien) scene.remove(c.chien.o); return false; } return true; });
     clients = nettoyer(clients); livreurs = nettoyer(livreurs);
 
     majChutes(dt); majConfettis(dt); majPigeons(dt); majMeteo(dt, e); majConfort(dt, e); majCiel(dt, e); majCuisine(dt, e);
@@ -1591,5 +1662,5 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     return toile;
   }
 
-  return { majDecor, image, livraison, projeter, ANCRES, pulse: i => pulsations.set(i, .35), redim, qualite, vignette, capture };
+  return { majDecor, image, livraison, projeter, ANCRES, pulse: i => pulsations.set(i, .35), redim, qualite, vignette, capture, grille, marcheurs: () => [...Marcheur.tous] };
 }

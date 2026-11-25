@@ -638,3 +638,91 @@ body { color:var(--encre); }
 .accueil-carte h1 { font-family:Georgia, 'Times New Roman', serif; font-weight:700; letter-spacing:-.01em; }
 .accueil-carte { box-shadow:var(--ombre-douce); }
 .accueil-carte img { box-shadow:0 2px 10px rgba(30,20,14,.18); border-radius:12px; }
+
+/* =================== v6 : habillage « jeu de ferme » cartoon (couleurs vives, gros boutons en relief, bois et parchemin) ===================
+   Ce bloc passe après l'habillage sobre de la v5.2 et le remplace. Police ronde Fredoka partout pour les titres, boutons et chiffres. */
+:root { --encre:#4A2A12; --espresso:#7A4A22; --espresso-f:#5A3214; --papier:#FFF6DD; --filet:#E8C98F; --accent:#5FAE2E;
+        --bois:#C98B4E; --bois-f:#8A5226; --bois-c:#E3AE6E; --parchemin:#FFF6DD; --ombre-douce:0 4px 0 rgba(90,50,20,.35), 0 10px 22px rgba(60,35,10,.25); }
+body { color:var(--encre); }
+.carte-argent b, .carte-argent .ips, .panneau h3, .prix-grand, .tresorerie b, .journal-bilan b.total, #bulle .qui,
+.btn, .onglet, .section-titre, .accueil-carte h1, .gz-tete h2, .medaille b, .fiche-client b { font-family:Fredoka, Nunito, sans-serif !important; }
+
+/* Panneaux : parchemin crème dans un cadre de bois */
+.panneau, #bulle, .carte-decision { background:var(--parchemin); border:4px solid var(--bois); border-radius:20px; box-shadow:inset 0 0 0 2px var(--bois-c), var(--ombre-douce); backdrop-filter:none; }
+.panneau h3 { font-weight:700; font-size:21px; color:var(--bois-f); text-shadow:0 1px 0 #fff; }
+.panneau .fermer { background:#E8584F; color:#fff; border:3px solid #9E2F28; border-radius:50%; box-shadow:0 3px 0 #9E2F28; font-weight:800; }
+.carte-cat { background:#FFFDF3; border:2px solid var(--filet); border-radius:14px; }
+.carte-cat.actuelle { border-color:#8BD34A; background:#F3FBE6; }
+.section-titre { font-weight:700; font-size:15px; letter-spacing:0; text-transform:none; color:var(--bois-f); }
+
+/* Gros boutons ronds en relief, bordure foncée, texte blanc ombré */
+.btn { font-weight:700; font-size:15px; border-radius:14px; color:#fff; text-shadow:0 2px 0 rgba(0,0,0,.28);
+  background:linear-gradient(#9BDB55, #5FAE2E); border:3px solid #3E7A1A; box-shadow:0 4px 0 #2F6512, inset 0 2px 0 rgba(255,255,255,.45); }
+.btn.vert { background:linear-gradient(#9BDB55, #5FAE2E); border-color:#3E7A1A; box-shadow:0 4px 0 #2F6512, inset 0 2px 0 rgba(255,255,255,.45); }
+.btn.miel { background:linear-gradient(#FFE066, #F2A900); border-color:#B37A00; box-shadow:0 4px 0 #8A5E00, inset 0 2px 0 rgba(255,255,255,.5); color:#fff; }
+.btn.brun { background:linear-gradient(#E3AE6E, #B9773C); border-color:#7A4A22; box-shadow:0 4px 0 #5A3214, inset 0 2px 0 rgba(255,255,255,.4); }
+.btn.prune { background:linear-gradient(#8ED3FA, #3D93D6); border-color:#1F5E96; box-shadow:0 4px 0 #17497A, inset 0 2px 0 rgba(255,255,255,.45); }
+.btn.rouge { background:linear-gradient(#FF8A7A, #E0473C); border-color:#9E2F28; box-shadow:0 4px 0 #7A2420, inset 0 2px 0 rgba(255,255,255,.4); }
+.btn.mini { font-size:13px; border-radius:10px; border-width:2px; padding:5px 9px; box-shadow:0 3px 0 #2F6512, inset 0 2px 0 rgba(255,255,255,.4); }
+.btn.mini.rouge { box-shadow:0 3px 0 #7A2420; }
+.btn:disabled, .btn.off { background:linear-gradient(#E9DCC6, #D4C2A4); border-color:#B29C7A; color:#8A7458; text-shadow:none; box-shadow:0 3px 0 #9C8664; }
+.btn:active:not(:disabled):not(.off) { transform:translateY(3px); box-shadow:0 1px 0 rgba(0,0,0,.3), inset 0 2px 0 rgba(255,255,255,.4); filter:none; }
+.boutons.nav { gap:6px; }
+.boutons.nav .btn { border-radius:16px; font-size:13.5px; padding:6px 2px 7px; backdrop-filter:none; }
+.boutons.nav .btn::before { font-size:21px; filter:drop-shadow(0 2px 0 rgba(0,0,0,.25)); }
+.boutons.nav .btn small { opacity:.95; font-weight:800; font-family:Nunito; }
+#b-stock { background:linear-gradient(#9BDB55, #5FAE2E); border-color:#3E7A1A; }
+#b-prix { background:linear-gradient(#FFE066, #F2A900); border-color:#B37A00; box-shadow:0 4px 0 #8A5E00, inset 0 2px 0 rgba(255,255,255,.5); }
+#b-travaux { background:linear-gradient(#E3AE6E, #B9773C); border-color:#7A4A22; box-shadow:0 4px 0 #5A3214, inset 0 2px 0 rgba(255,255,255,.4); }
+#b-carnet { background:linear-gradient(#8ED3FA, #3D93D6); border-color:#1F5E96; box-shadow:0 4px 0 #17497A, inset 0 2px 0 rgba(255,255,255,.45); }
+#rush { background:linear-gradient(#FFB36B, #F2792B); border-color:#A8501A; box-shadow:0 4px 0 #7E3B12, inset 0 2px 0 rgba(255,255,255,.45); }
+#rush.pause { background:linear-gradient(#C9B8A2, #9C8A74); border-color:#6B5A4E; }
+.btn .pastille { background:#E8584F; border:2px solid #fff; font-family:Fredoka; font-size:11px; box-shadow:0 2px 0 rgba(0,0,0,.25); }
+
+/* En-tête : la caisse dans une grosse pastille, la note en étoiles dorées */
+.carte-argent { background:var(--parchemin); border:4px solid var(--bois); border-radius:20px; box-shadow:inset 0 0 0 2px var(--bois-c), var(--ombre-douce); padding:6px 12px; }
+.carte-argent .nom { font-family:Fredoka; font-weight:600; font-size:12px; text-transform:none; letter-spacing:0; color:var(--bois-f); }
+.carte-argent #argent { font-size:27px; color:#3E7A1A; text-shadow:0 2px 0 #fff; }
+.carte-argent #argent::before { content:'🪙 '; display:inline; font-size:22px; text-transform:none; letter-spacing:0; }
+.carte-argent .ips { color:var(--bois-f); font-size:19px; }
+.etoiles { color:#F2B632; text-shadow:0 1px 0 #B37A00; font-size:16px; }
+.etoiles::before { content:''; }
+.puce { font-family:Fredoka; font-weight:600; font-size:12.5px; background:#FFFDF3; color:var(--encre); border:2px solid var(--filet); border-left-width:2px; border-radius:14px; padding:3px 10px; box-shadow:0 3px 0 rgba(90,50,20,.25); }
+.puce.rouge { background:#FFE3DF; color:#9E2F28; border-color:#F2A59C; border-left-color:#F2A59C; }
+.puce.vert { background:#EAF8DA; color:#3E7A1A; border-color:#A9DB7A; border-left-color:#A9DB7A; }
+.puce.miel { background:#FFF4C7; color:#8A5E00; border-color:#F2D06B; border-left-color:#F2D06B; }
+.objectif { background:#FFF4C7; border:3px solid #F2B632; border-radius:16px; box-shadow:0 3px 0 rgba(140,90,0,.3); font-family:Fredoka; font-weight:600; }
+.objectif b { font-family:Fredoka; color:#3E7A1A; }
+.objectif .cible, .defi .d-ico { filter:none; opacity:1; }
+.defi { background:#E8F4FF; border:3px solid #6FB7EA; border-radius:16px; box-shadow:0 3px 0 rgba(31,94,150,.3); font-family:Fredoka; font-weight:600; }
+
+/* Journal : onglets en bois */
+.onglets { background:var(--bois-c); border:3px solid var(--bois); border-radius:16px; padding:4px; }
+.onglet.rubrique { font-family:Fredoka; font-weight:600; color:#6B3E1A; border-radius:11px; }
+.onglet.choisi { background:var(--parchemin); color:var(--bois-f); box-shadow:0 2px 0 var(--bois-f); }
+.sous-onglets { border-bottom:2px solid var(--filet); }
+.sous-onglets button { font-family:Fredoka; font-weight:600; font-size:13px; color:#9A6A3A; }
+.sous-onglets button.choisi { color:var(--bois-f); border-bottom:3px solid #5FAE2E; }
+
+/* Postes, humeurs, fiches, bulles de parole : pastilles rondes et gaies */
+.etiq { font-family:Fredoka; font-weight:600; background:#FFFDF3; color:var(--encre); border:3px solid var(--bois); border-radius:14px; box-shadow:0 3px 0 rgba(90,50,20,.3); }
+.etiq .niv { color:#E0473C; }
+.etiq.panne { background:#E8584F; color:#fff; border-color:#9E2F28; }
+.pop { font-family:Fredoka; font-weight:700; font-size:17px; color:#3E7A1A; text-shadow:0 2px 0 #fff, 0 0 6px #fff; }
+.humeur { background:#fff; border:3px solid var(--bois); box-shadow:0 3px 0 rgba(90,50,20,.3); width:34px; height:34px; font-size:18px; }
+.fiche-client, .parole { background:var(--parchemin); border:3px solid var(--bois); border-radius:16px; box-shadow:var(--ombre-douce); }
+.parole b, .fiche-client b { color:var(--bois-f); }
+.parole::after { border-top-color:var(--bois); }
+#toast { background:rgba(122,74,34,.95); border:3px solid #5A3214; border-radius:16px; font-family:Fredoka; font-weight:500; }
+.accueil-carte { background:var(--parchemin); border:5px solid var(--bois); box-shadow:inset 0 0 0 2px var(--bois-c), var(--ombre-douce); }
+.accueil-carte h1 { color:var(--bois-f); text-shadow:0 3px 0 #fff, 0 5px 0 rgba(90,50,20,.25); letter-spacing:0; }
+.modes div { background:var(--bois-c); border:2px solid var(--bois); }
+.modes button { font-family:Fredoka; font-weight:600; color:#6B3E1A; }
+.modes button.choisi { background:var(--parchemin); color:var(--bois-f); }
+.papier { border:5px solid var(--bois); box-shadow:inset 0 0 0 2px var(--bois-c), 0 20px 60px rgba(0,0,0,.35); border-radius:14px; }
+.une-gazette { background:#FFFDF3; border:2px solid var(--filet); border-radius:14px; }
+.choix-courbe button { font-family:Fredoka; font-weight:600; }
+.choix-courbe button.choisi { background:#5FAE2E; color:#fff; }
+.courbe svg polyline { stroke:#5FAE2E; stroke-width:3; }
+.courbe svg circle { fill:#fff; stroke:#3E7A1A; }
+.tuto-cible { outline:4px solid #F2B632; outline-offset:4px; border-radius:16px; }
