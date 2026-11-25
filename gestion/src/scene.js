@@ -517,6 +517,13 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   put(rbox(3.4, 1.0, .9, C.caramel, .06), .3, .5, -1.65, bar);
   put(rbox(3.55, .12, 1.08, C.bois, .04), .3, 1.06, -1.65, bar);
   [-.9, .3, 1.5].forEach(x => put(rbox(.9, .6, .04, 0xB97A3F, .05), x, .5, -1.18, bar));
+  // finitions du comptoir : plateau clair façon marbre, panneaux moulurés, socle sombre et barre repose-pieds en laiton
+  put(rbox(3.6, .035, 1.12, 0xF3ECE2, .015), .3, 1.135, -1.65, bar);
+  [-.9, .3, 1.5].forEach(x => put(rbox(.72, .44, .03, 0xD39A5C, .04), x, .5, -1.155, bar));
+  put(rbox(3.42, .1, .92, 0x5A3214, .02), .3, .05, -1.65, bar);
+  const laiton = mat(0xD4A24C, { metalness: .85, roughness: .3, envMap: reflets, envMapIntensity: 1 });
+  const rail = put(ombre(new THREE.Mesh(new THREE.CylinderGeometry(.03, .03, 3.3, 16), laiton)), .3, .2, -1.06, bar); rail.rotation.z = Math.PI / 2;
+  [-1.3, .3, 1.9].forEach(x => put(ombre(new THREE.Mesh(new THREE.CylinderGeometry(.018, .018, .16, 10), laiton)), x, .13, -1.12, bar).rotation.x = .5);
   D.comptoirB = grp(bar);
   put(rbox(2.0, 1.0, .9, C.caramel, .06), 3.0, .5, -1.65, D.comptoirB);
   put(rbox(2.1, .12, 1.08, C.bois, .04), 3.0, 1.06, -1.65, D.comptoirB);

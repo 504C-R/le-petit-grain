@@ -1,0 +1,8 @@
+Modèles 3D KayKit, créés et distribués par Kay Lousberg (www.kaylousberg.com)
+Licence : Creative Commons Zero (CC0) — http://creativecommons.org/publicdomain/zero/1.0/
+Packs utilisés : Restaurant Bits 1.0, Furniture Bits 1.0, City Builder Bits 1.0 (github.com/KayKit-Game-Assets)
+Fichiers concernés : table, table_vieille, chaise, chaise_vieille, tabouret, etagere_deco, etagere_petite, cadre_a, cadre_b,
+lampadaire_salon, fauteuil, canape, table_basse, tapis_raye, cactus, cactus_petit, livres, bocal_a, bocal_b, bocal_c,
+assiette, menu, caisse_pains, caisse_bois, route, route_passage, voiture_a, voiture_b, voiture_c, voiture_taxi,
+buisson, borne_incendie, benne, immeuble_a à immeuble_h.
+Convertis et mis à l'échelle par tools/blender/kaykit.py. Tous les autres modèles (dont le personnage) sont faits maison.

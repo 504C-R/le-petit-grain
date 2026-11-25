@@ -230,11 +230,11 @@ export function creerUI({ jeu, scene }) {
   // ---------- Journal du soir (en onglets) ----------
   // Le journal est rangé en 5 rubriques simples ; une rubrique peut avoir plusieurs pages
   const RUBRIQUES = [
-    { icone: '📋', nom: 'Ma journée', pages: [['bilan', 'Bilan du jour']] },
-    { icone: '☕', nom: 'Carte & clients', pages: [['carte', 'La carte'], ['clients', 'Fidélité et pub']] },
-    { icone: '👥', nom: 'Équipe', pages: [['equipe', 'Les employés'], ['planning', 'Le planning']] },
-    { icone: '🛠️', nom: 'Le café', pages: [['travaux', 'Travaux et déco'], ['catalogue', 'Matériel'], ['entretien', 'Entretien']] },
-    { icone: '💶', nom: 'Comptes', pages: [['finances', 'Comptes et banque']] },
+    { icone: '<img src="assets/icones/journee.svg" alt="">', nom: 'Ma journée', pages: [['bilan', 'Bilan du jour']] },
+    { icone: '<img src="assets/icones/carte.svg" alt="">', nom: 'Carte & clients', pages: [['carte', 'La carte'], ['clients', 'Fidélité et pub']] },
+    { icone: '<img src="assets/icones/equipe.svg" alt="">', nom: 'Équipe', pages: [['equipe', 'Les employés'], ['planning', 'Le planning']] },
+    { icone: '<img src="assets/icones/cafe.svg" alt="">', nom: 'Le café', pages: [['travaux', 'Travaux et déco'], ['catalogue', 'Matériel'], ['entretien', 'Entretien']] },
+    { icone: '<img src="assets/icones/comptes.svg" alt="">', nom: 'Comptes', pages: [['finances', 'Comptes et banque']] },
   ];
   const ICONES_CAT = { 'Déco': '🎨', 'Salle': '🪑', 'Réserve': '📦', 'Bar': '☕', 'Agrandir': '🏗️', 'Équipe': '🎓', 'Confort': '🔥' };
   const ICONES_FOURN = { grossiste: '🏪', artisan: '🔥', importateur: '🚢' };

@@ -726,3 +726,25 @@ body { color:var(--encre); }
 .courbe svg polyline { stroke:#5FAE2E; stroke-width:3; }
 .courbe svg circle { fill:#fff; stroke:#3E7A1A; }
 .tuto-cible { outline:4px solid #F2B632; outline-offset:4px; border-radius:16px; }
+
+/* =================== v8 : finitions « App Store » ===================
+   Icônes maison (assets/icones/*.svg) à la place des emojis, et un écran de chargement soigné. */
+.boutons.nav .btn::before { content:''; display:block; width:28px; height:28px; margin:0 auto 1px; background:center/contain no-repeat; filter:drop-shadow(0 2px 0 rgba(0,0,0,.22)); font-size:0; }
+#b-stock::before { background-image:url(assets/icones/reserve.svg); }
+#b-prix::before { background-image:url(assets/icones/prix.svg); }
+#b-travaux::before { background-image:url(assets/icones/journal.svg); }
+#b-carnet::before { background-image:url(assets/icones/carnet.svg); }
+#rush::before { background-image:url(assets/icones/vitesse.svg); }
+.carte-argent #argent::before { content:''; display:inline-block; width:26px; height:26px; margin-right:6px; vertical-align:-4px; background:url(assets/icones/piece.svg) center/contain no-repeat; }
+.onglet.rubrique .ico { line-height:0; }
+.onglet.rubrique .ico img { width:26px; height:26px; filter:drop-shadow(0 1px 0 rgba(0,0,0,.18)); }
+.boutons.nav .btn { padding-top:7px; }
+
+/* Écran de chargement : l'icône de l'app qui rebondit doucement, le nom du jeu, une barre de progression ronde */
+#chargement { background:radial-gradient(circle at 50% 40%, #FFD66B 0%, #FF9F43 55%, #EE5A24 100%); color:#fff; font-family:Fredoka; font-weight:700; font-size:18px;
+  text-shadow:0 2px 0 rgba(122,60,10,.45); padding-top:330px; }
+#chargement::before { content:''; position:absolute; left:50%; top:calc(50% - 150px); width:140px; height:140px; transform:translateX(-50%); border-radius:32px;
+  background:url(assets/images/icone-512.png) center/cover; box-shadow:0 10px 0 rgba(122,60,10,.25), 0 18px 40px rgba(122,60,10,.35); animation:icone-saute 1.4s ease-in-out infinite; }
+@keyframes icone-saute { 0%,100% { transform:translateX(-50%) translateY(0); } 50% { transform:translateX(-50%) translateY(-10px); } }
+#chargement::after { top:calc(50% + 70px); height:16px; border-radius:10px; border:3px solid #7A3C0A; box-shadow:0 3px 0 rgba(122,60,10,.35);
+  background:linear-gradient(90deg, #9BDB55 var(--progression), #FFF6DD var(--progression)); }
