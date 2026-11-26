@@ -4,7 +4,7 @@ import { creerUI, fmt } from './ui.js';
 import { sons, ambiance } from './sons.js';
 import { plateforme } from './plateforme.js';
 import * as J from './game.js';
-import { G, STATIONS, DIFFICULTES, VISITEURS } from './data.js';
+import { G, STATIONS, DIFFICULTES, VISITEURS, LIGUE } from './data.js';
 
 // Sauvegarde à part de la version idle ; le mode ?debug a la sienne, pour ne jamais toucher à la vraie partie
 const CLE = new URLSearchParams(location.search).has('debug') ? 'n15x-gestion-v1-debug' : 'n15x-gestion-v1';
@@ -89,14 +89,15 @@ const jeu = {
   exporter() { sauver(); return J.exporterSauvegarde(e); },
   importer(code) {
     const n = J.importerSauvegarde(code); if (!n) return false;
-    e = n; J.initCourrier(e, auj); scene.majDecor(e); ui.fermer(); sauver(); return true;
+    e = n; J.initCourrier(e, auj); scene.majDecor(e); scene.majUniforme(J.uniforme(e).couleur); ui.fermer(); sauver(); return true;
   },
   nouvellePartie() {
     try { localStorage.removeItem(CLE); } catch { /* rien */ }
-    e = J.nouvelEtat(); J.initCourrier(e, auj); scene.majDecor(e); ui.fermer(); sauver();
+    e = J.nouvelEtat(); J.initCourrier(e, auj); scene.majDecor(e); scene.majUniforme(J.uniforme(e).couleur); ui.fermer(); sauver();
   },
 };
 ui = creerUI({ jeu, scene });
+scene.majUniforme(J.uniforme(e).couleur);
 scene.majDecor(e);
 // Les livraisons se comptent en kilos : on montre entre 1 et 6 cartons
 const sacsVisibles = c => Math.max(1, Math.min(6, Math.round(c.sacs / 5)));
@@ -152,6 +153,17 @@ function traiterArrivee(ar) {
     setTimeout(() => ui.bulle(`Bilan de ${m.nom.toLowerCase()} : ${fmt(m.ca)} de chiffre d’affaires, ${fmt(m.salaires)} de salaires, ${fmt(m.loyer)} de loyer. Résultat : ${res < 0 ? '−' + fmt(-res) : fmt(res)}${m.impots ? ` (après ${fmt(m.impots)} d’impôt)` : ''}. ${res > 0 ? 'Bravo, ma petite !' : 'On va redresser la barre : regarde les salaires et le prix.'}`, { titre: `Fin du mois de ${m.nom.toLowerCase()}` }), 1800);
   }
   if (ar.gazette) setTimeout(() => ui.annoncerGazette(ar.gazette), 3500);
+  if (ar.evtQuartier) { const v = ar.evtQuartier; setTimeout(() => ui.toast(`${v.icone} <b>${v.nom}</b> aujourd’hui : ${v.desc}. Prévois du monde et du grain !`, 6500), 5000); }
+  if (ar.finLigue) {
+    const f = ar.finLigue, D = LIGUE.divisions, monte = f.apres > f.avant, descend = f.apres < f.avant;
+    setTimeout(() => ui.celebrer({ genre: `Fin de la semaine · ligue ${D[f.avant].nom}`, titre: `${f.place}${f.place === 1 ? 're' : 'e'} place !`,
+      texte: `+${f.or} grains d’or${f.caisse ? ' et une caisse offerte au marché' : ''}. ${monte ? `Tu montes en ligue ${D[f.apres].nom} ${D[f.apres].icone} !` : descend ? `Tu redescends en ligue ${D[f.apres].nom}.` : `Tu restes en ligue ${D[f.apres].nom}.`}` }), 2600);
+  }
+  if (ar.concoursDeco) {
+    const c = ar.concoursDeco;
+    setTimeout(() => c.place ? ui.celebrer({ genre: 'Concours de déco du quartier', titre: c.nom, texte: `Le jury a adoré ta salle : +${c.or} grains d’or.` })
+      : ui.toast(`🎨 Concours de déco : merci de ta participation (+${c.or} grains d’or). Plus de déco et une harmonie murs-sol pour monter sur le podium !`, 6500), 3000);
+  }
   if (ar.finAnnee) setTimeout(() => ui.afficherAnnee(ar.finAnnee), 4200);
   if (ar.sauvetage) setTimeout(() => ui.bulle('Ton compte a plongé trop bas : la banque voulait fermer le café ! J’ai vidé mon livret pour te renflouer de 10 000 €. Je ne pourrai pas le refaire, alors fais attention aux charges.', { titre: 'Mamie à la rescousse' }), 2500);
   if (ar.faillite) setTimeout(() => ui.bulle('La banque a fermé le compte : le café est en faillite. On ne baisse pas les bras : on recommence, en surveillant mieux les charges.', { titre: 'Faillite', boutons: [{ label: 'Recommencer', cls: 'vert', fn: () => jeu.nouvellePartie() }] }), 2500);
@@ -184,7 +196,8 @@ function image(dt) {
     accVerif = 0;
     auj = jourReel(); ui.majCourrier();   // minuit passé en jouant : la lettre du jour arrive
     // Pendant une lecture (lettre, chapitre, Gazette), les fêtes attendent qu'on referme le papier
-    const lecture = !document.getElementById('papier').hidden;
+    // (la roulette des caisses et la roue du matin comptent aussi : une fête ne doit pas s'ouvrir cachée derrière)
+    const lecture = ['papier', 'roulette', 'roue'].some(id => !document.getElementById(id).hidden);
     const obj = lecture ? null : J.verifierObjectif(e); if (obj) { ui.objectifAtteint(obj); plateforme.joie(); }
     if (!lecture) J.verifierSucces(e).forEach(s => ui.celebrer({ genre: 'Nouveau succès', titre: s.nom, texte: s.desc }));
     if (!lecture) J.verifierNiveau(e).forEach(n => { ui.celebrerNiveau(n); plateforme.joie(); });
@@ -249,6 +262,7 @@ if (!params.has('debug') || params.has('accueil')) {
     if (absence && !absence.rien) setTimeout(() => ui.afficherAbsence(absence), 700);
     else if (absence?.sansEquipe && absence.heures >= 1) setTimeout(() => ui.toast('Le café est resté fermé pendant ton absence. <b>Embauche quelqu’un</b> : ton équipe le fera tourner quand tu n’es pas là.', 6500), 1200);
     if (J.courrierDispo(e, auj)) setTimeout(() => ui.toast('✉️ <b>Une lettre de mamie t’attend !</b> Touche l’enveloppe pour l’ouvrir.', 5500), absence && !absence.rien ? 2500 : 900);
+    else if (J.roueDispo(e, auj) && e.jour > 1) setTimeout(() => ui.toast('🎡 <b>La roue du matin</b> t’attend au marché : un tour gratuit par jour !', 5000), 1500);
     absence = null;
   };
 } else { enJeu = true; plateforme.jeuDebut(); if (absence && !absence.rien) setTimeout(() => ui.afficherAbsence(absence), 700); }

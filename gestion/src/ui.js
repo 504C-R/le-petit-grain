@@ -3,7 +3,7 @@ import * as J from './game.js';
 import { sons, regleSon, regleMusique } from './sons.js';
 import { STATIONS, GRAINS, G, TRAVAUX, T, SUCCES, HISTOIRE, MOTS_TRAVAUX, DOSES_SAC, LAIT, MOMENTS, TARIFS, MURS, SOLS, STYLES, FORMULES,
   PERSONNEL, ROLES, PRETS, MOIS, DECOUVERT, VIENNOISERIES, CARTE, MARKETING, FIDELITE, HISTOIRES_HABITUES, HABITUES, LETTRES, NIVEAUX_POSTES, DEBLOCAGES, VISITEURS,
-  OR, RARETES, CARTES, CAISSES, CARTES_NIVEAUX, EMPLACEMENTS, EFFETS_CARTES } from './data.js';
+  OR, RARETES, CARTES, CAISSES, CARTES_NIVEAUX, EMPLACEMENTS, EFFETS_CARTES, COLLECTIONS, UNIFORMES, LIGUE, ROUE } from './data.js';
 const heureTexte = h => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.floor((h % 1) * 60)).padStart(2, '0')}`;
 
 export function fmt(n) {
@@ -78,7 +78,7 @@ export function creerUI({ jeu, scene }) {
     const btns = !actions ? '' : `<div class="cc-btns">${actif ? `<button data-retirer="${c.id}">Retirer</button>` : `<button class="vert" data-activer="${c.id}">Activer</button>`}`
       + (J.peutFusionner(E(), c.id) ? `<button class="or" data-fusion="${c.id}">Fusionner ×${CARTES_NIVEAUX.fusion}</button>` : '')
       + (p.n >= 2 ? `<button data-recycler="${c.id}">Recycler +${r.recyclage}</button>` : '') + `</div>`;
-    return `<div class="ccarte${actif ? ' active' : ''}" style="--rarete:${r.couleur}"><span class="cc-rar">${r.nom}</span><span class="cc-ico">${c.icone}</span><b>${c.nom}</b>
+    return `<div class="ccarte r-${c.rarete}${actif ? ' active' : ''}" style="--rarete:${r.couleur}"><span class="cc-rar">${r.nom}</span><span class="cc-ico">${c.icone}</span><b>${c.nom}</b>
       <small class="cc-bonus">${texteBonus(c, p.niv)}</small><span class="cc-niv">${etoiles}${p.n > 1 ? ` · ×${p.n}` : ''}</span>${btns}</div>`;
   }
   function majMarche() {
@@ -87,7 +87,10 @@ export function creerUI({ jeu, scene }) {
     let h = '';
     if (ongletMarche === 'defis') {
       const ms = e.missions || [];
-      h = `<p class="legende">Trois missions à chaque journée. Les trois réussies : <b>+${OR.journeeParfaite}</b> grains d’or en bonus. Le défi du jour en rapporte aussi.</p>`
+      h = (J.roueDispo(e, jeu.auj) ? `<button class="roue-pret" data-roue><span>🎡</span><div><b>La roue du matin</b><small>Un tour gratuit chaque jour : un bonus pour ta journée</small></div><em>Tourner</em></button>`
+        : e.roue ? `<p class="roue-active">🎡 Bonus de la roue : <b>${ROUE.find(s => s.id === e.roue.effet)?.nom}</b> ${e.roue.jour === e.jour ? 'aujourd’hui' : 'demain'}.</p>` : '<p class="legende">🎡 La roue du matin revient demain.</p>')
+        + (J.evtQuartier(e) && J.ouvert(e) ? `<p class="roue-active">${J.evtQuartier(e).icone} Aujourd’hui : <b>${J.evtQuartier(e).nom}</b>, ${J.evtQuartier(e).desc}.</p>` : '')
+        + `<p class="legende">Trois missions à chaque journée. Les trois réussies : <b>+${OR.journeeParfaite}</b> grains d’or en bonus. Le défi du jour en rapporte aussi.</p>`
         + (ms.length ? ms.map(m => { const pr = J.progresMission(e, m), pc = m.fini ? 1 : Math.min(1, pr / Math.max(1, m.cible));
           return `<div class="mission${m.fini ? ' fini' : ''}"><span class="mi-ico">${m.fini ? '✅' : '🏅'}</span><div><b>${esc(m.texte)}</b><span class="nd-barre"><i style="width:${pc * 100}%"></i></span>
             <small>${m.fini ? 'Réussie !' : m.type === 'benefice' ? 'Vérifié à la fermeture' : `${Math.floor(pr).toLocaleString('fr-FR')} / ${m.cible.toLocaleString('fr-FR')}`}</small></div><em><img src="assets/icones/grain-or.svg" alt="">${m.or}</em></div>`; }).join('')
@@ -96,14 +99,32 @@ export function creerUI({ jeu, scene }) {
     } else if (ongletMarche === 'caisses') {
       h = `<p class="legende">Chaque caisse contient une carte. Les chances sont affichées : plus la caisse est chère, plus les cartes rares sortent.</p>`
         + CAISSES.map(k => `<div class="caisse"><span class="ca-ico">${k.icone}</span><div><b>${k.nom}</b><div class="ca-chances">${Object.keys(RARETES).filter(r => k.chances[r]).map(r => `<span style="--rarete:${RARETES[r].couleur}">${RARETES[r].nom} ${k.chances[r]} %</span>`).join('')}</div></div>
-          <button class="btn mini or${J.grainsOr(e) < k.prix ? ' off' : ''}" data-caisse="${k.id}"><img src="assets/icones/grain-or.svg" alt="">${k.prix}</button></div>`).join('');
+          ${J.caissesGratuites(e, k.id) ? `<button class="btn mini vert" data-caisse="${k.id}">Gratuite ×${J.caissesGratuites(e, k.id)}</button>` : `<button class="btn mini or${J.grainsOr(e) < k.prix ? ' off' : ''}" data-caisse="${k.id}"><img src="assets/icones/grain-or.svg" alt="">${k.prix}</button>`}</div>`).join('');
+    } else if (ongletMarche === 'boutique') {
+      const offres = e.boutique?.offres || [], u = J.uniforme(e), possedes = e.meta.uniformes || ['cafe'];
+      h = `<div class="section-titre">Les cartes du jour</div><p class="legende">Trois cartes précises, au prix fixe de leur rareté. Nouvelles offres à chaque journée.</p>`
+        + (offres.length ? `<div class="collection">${offres.map((o, k) => { const c = J.CATALOGUE_CARTES[o.carte], p = J.carteDe(e, c.id);
+            return `<div class="offre">${carteHtml(c, p || { niv: 1, n: 0 }, false, false)}${o.achete ? '<span class="fait">Achetée ✓</span>' : `<button class="btn mini or${J.grainsOr(e) < o.prix ? ' off' : ''}" data-offre="${k}"><img src="assets/icones/grain-or.svg" alt="">${o.prix}</button>`}${p ? `<small class="legende">Tu l’as déjà (×${p.n})</small>` : '<small class="legende">Nouvelle pour toi</small>'}</div>`; }).join('')}</div>`
+          : '<p class="desc">La boutique ouvre avec le café.</p>')
+        + `<div class="section-titre">Uniformes de l’équipe</div><p class="legende">La couleur des tabliers de toute l’équipe.</p><div class="uniformes">`
+        + UNIFORMES.map(x => `<button class="uni${x.id === u.id ? ' choisi' : ''}" data-uniforme="${x.id}"><i style="background:#${x.couleur.toString(16).padStart(6, '0')}"></i><b>${x.nom}</b><small>${x.id === u.id ? 'porté' : possedes.includes(x.id) ? 'à toi' : x.prix ? `${x.prix} grains d’or` : 'offert'}</small></button>`).join('') + '</div>';
+    } else if (ongletMarche === 'ligue') {
+      const l = e.ligue, cl = J.classementLigue(e), div = LIGUE.divisions[l?.division || 0], jours = 6 - J.jourSemaine(e) + (J.ouvert(e) ? 1 : 0);
+      h = l ? `<div class="ligue-tete"><span>${div.icone}</span><div><b>Ligue ${div.nom}</b><small>Fin de la semaine dans ${jours} journée${jours > 1 ? 's' : ''} (dimanche soir). Les ${LIGUE.montent} premiers montent, les ${LIGUE.descendent} derniers descendent.</small></div></div>
+        <p class="legende">Points : 1 par client servi, ${LIGUE.pointsCommande} par commande spéciale réussie.</p>
+        <ol class="classement">${cl.map((x, k) => { const rec = LIGUE.recompenses[k];
+          return `<li class="${x.moi ? 'moi' : ''}${k < LIGUE.montent ? ' monte' : k >= cl.length - LIGUE.descendent ? ' descend' : ''}"><span class="cl-rang">${k < 3 ? ['🥇', '🥈', '🥉'][k] : k + 1}</span><b>${esc(x.nom)}${x.moi && l.placeHier ? (l.placeHier > k + 1 ? ' <i class="tendance monte">▲</i>' : l.placeHier < k + 1 ? ' <i class="tendance descend">▼</i>' : '') : ''}</b><span class="cl-pts">${x.points.toLocaleString('fr-FR')}</span><small>${rec ? `+${rec.or}${rec.caisse ? ' + ' + CAISSES.find(c => c.id === rec.caisse).icone : ''}` : ''}</small></li>`; }).join('')}</ol>`
+        : '<p class="desc">La ligue commence avec ta première journée.</p>';
     } else {
       const n = J.nbEmplacements(e), actives = e.meta.cartesActives || [];
       const emp = EMPLACEMENTS.map((x, k) => k < n ? (actives[k] ? `<div class="emp plein" style="--rarete:${RARETES[J.CATALOGUE_CARTES[actives[k]].rarete].couleur}"><span>${J.CATALOGUE_CARTES[actives[k]].icone}</span><small>${texteBonus(J.CATALOGUE_CARTES[actives[k]], J.carteDe(e, actives[k]).niv)}</small></div>` : '<div class="emp"><span>＋</span><small>Emplacement libre</small></div>')
         : `<div class="emp verrou"><span>🔒</span><small>Niveau ${x.niveau}</small></div>`).join('');
       const possedees = Object.keys(e.meta.cartes || {}).length;
       h = `<div class="section-titre">Cartes actives (${actives.length}/${n})</div><div class="emplacements">${emp}</div>
-        <div class="section-titre">Collection ${possedees}/${CARTES.length}</div><p class="legende">${CARTES_NIVEAUX.fusion} cartes identiques fusionnent en une carte plus forte (★★, puis ★★★). Les doubles se recyclent en grains d’or.</p>
+        <div class="section-titre">Les collections</div><p class="legende">Les 4 cartes d’une série, même rangées : un bonus permanent en plus.</p>
+        <div class="series">${COLLECTIONS.map(k => { const ids = CARTES.filter(c => c.collection === k.id), n = ids.filter(c => J.carteDe(e, c.id)).length, ok = n === ids.length;
+          return `<div class="serie${ok ? ' complete' : ''}"><span>${k.icone}</span><div><b>${k.nom}</b><small>${ok ? '✓ ' : ''}${pourcent(k.valeur)} ${EFFETS_CARTES[k.effet]}</small><span class="serie-cartes">${ids.map(c => J.carteDe(e, c.id) ? c.icone : '❔').join(' ')}</span></div><em>${n}/${ids.length}</em></div>`; }).join('')}</div>
+        <div class="section-titre">Toutes les cartes ${possedees}/${CARTES.length}</div><p class="legende">${CARTES_NIVEAUX.fusion} cartes identiques fusionnent en une carte plus forte (★★, puis ★★★). Les doubles se recyclent en grains d’or.</p>
         <div class="collection">${[...CARTES].sort((x, y) => !!J.carteDe(e, y.id) - !!J.carteDe(e, x.id)).map(c => carteHtml(c, J.carteDe(e, c.id), actives.includes(c.id))).join('')}</div>`;
     }
     $('m-liste').innerHTML = h;
@@ -113,6 +134,17 @@ export function creerUI({ jeu, scene }) {
     const b = ev.target.closest('button'); if (!b) return;
     const e = E(), d = b.dataset;
     if (d.caisse) return lancerRoulette(d.caisse);
+    if (d.roue != null && b.dataset.roue !== undefined) return lancerRoue();
+    if (d.offre != null) {
+      const r = J.acheterOffre(e, +d.offre);
+      if (r.erreur === 'or') toast('Pas encore assez de grains d’or.');
+      else if (!r.erreur) { sons.achat(); toast(`${r.carte.icone} <b>${r.carte.nom}</b> rejoint ta collection${r.activee ? ' (et s’active)' : ''}.`); if (r.collection) celebrer({ genre: 'Collection complète', titre: `${r.collection.icone} ${r.collection.nom}`, texte: `Bonus permanent : ${pourcent(r.collection.valeur)} ${EFFETS_CARTES[r.collection.effet]}.` }); }
+    }
+    if (d.uniforme) {
+      const r = J.choisirUniforme(e, d.uniforme);
+      if (r === 'or') toast('Pas encore assez de grains d’or pour cet uniforme.');
+      else if (r === 'ok') { sons.achat(); scene.majUniforme(J.uniforme(e).couleur); toast(`Toute l’équipe porte maintenant le tablier <b>${J.uniforme(e).nom.toLowerCase()}</b>.`); }
+    }
     if (d.activer) { const r = J.activerCarte(e, d.activer); if (r === 'plein') toast(`Tous tes emplacements sont pris : retire d’abord une carte. Un emplacement de plus au niveau ${EMPLACEMENTS[J.nbEmplacements(e)]?.niveau || '—'} du café.`, 5000); else sons.achat(); }
     if (d.retirer) { J.desactiverCarte(e, d.retirer); sons.clic(); }
     if (d.fusion && J.fusionner(e, d.fusion) === 'ok') { const c = J.CATALOGUE_CARTES[d.fusion]; celebrer({ genre: 'Fusion réussie', titre: `${c.icone} ${c.nom}`, texte: `Niveau ${J.carteDe(e, d.fusion).niv} : ${texteBonus(c, J.carteDe(e, d.fusion).niv)}.` }); }
@@ -121,6 +153,22 @@ export function creerUI({ jeu, scene }) {
   });
   // ---------- La roulette façon caisse : une bande de cartes défile, ralentit et s'arrête sur la carte gagnée ----------
   let caisseEnCours = null;
+  // Le grand moment : un éclair de la couleur de la rareté et une pluie de confettis
+  function eclatRoulette(rarete) {
+    const boite = document.querySelector('.rl-boite'), couleur = RARETES[rarete].couleur;
+    const flash = document.createElement('div'); flash.className = 'rl-flash'; flash.style.setProperty('--rarete', couleur);
+    const pluie = document.createElement('div'); pluie.className = 'confettis rl-pluie';
+    const n = rarete === 'legendaire' ? 60 : 34, teintes = [couleur, '#FFE07A', '#FFFFFF', '#F5B82E'];
+    for (let k = 0; k < n; k++) {
+      const i = document.createElement('i'); i.style.left = Math.random() * 100 + '%'; i.style.background = teintes[k % teintes.length];
+      i.style.animationDelay = (Math.random() * .5) + 's'; i.style.animationDuration = (1.6 + Math.random() * 1.4) + 's';
+      i.style.setProperty('--tourne', (Math.random() * 720 - 360) + 'deg'); i.style.setProperty('--derive', (Math.random() * 120 - 60) + 'px');
+      pluie.appendChild(i);
+    }
+    boite.append(flash, pluie);
+    setTimeout(() => { flash.remove(); pluie.remove(); }, 3600);
+    if (rarete === 'legendaire') { sons.succes(); setTimeout(() => sons.succes(), 260); }
+  }
   function lancerRoulette(id) {
     const e = E(), k = CAISSES.find(x => x.id === id);
     const r = J.ouvrirCaisse(e, id);
@@ -130,7 +178,7 @@ export function creerUI({ jeu, scene }) {
     const N = 46, GAGNANT = 38, LARGE = 104, ECART = 8;
     const bande = Array.from({ length: N }, (_, i) => i === GAGNANT ? r.carte : J.tirerCarte(k, Math.random));
     $('rl-titre').textContent = `${k.icone} ${k.nom}`;
-    $('rl-bande').innerHTML = bande.map(c => `<div class="rl-carte" style="--rarete:${RARETES[c.rarete].couleur}"><span>${c.icone}</span><small>${c.nom}</small></div>`).join('');
+    $('rl-bande').innerHTML = bande.map(c => `<div class="rl-carte r-${c.rarete}" style="--rarete:${RARETES[c.rarete].couleur}"><span>${c.icone}</span><small>${c.nom}</small></div>`).join('');
     $('rl-resultat').hidden = true; $('rl-boutons').hidden = true;
     const bandeEl = $('rl-bande'); bandeEl.style.transition = 'none'; bandeEl.style.transform = 'translateX(0)';
     $('roulette').hidden = false;
@@ -151,13 +199,37 @@ export function creerUI({ jeu, scene }) {
     setTimeout(() => {
       const c = r.carte, rar = RARETES[c.rarete];
       bandeEl.children[GAGNANT].classList.add('gagnant');
-      $('rl-resultat').innerHTML = `<div class="rl-gagne" style="--rarete:${rar.couleur}"><span class="rl-rar">${rar.nom}</span><span class="rl-ico">${c.icone}</span><b>${c.nom}</b><small>${texteBonus(c, r.niv)}</small></div>
-        <p>${r.nouvelle ? 'Nouvelle carte !' : r.fusion ? `Tu en as ${r.exemplaires} : tu peux la <b>fusionner</b> !` : `Doublon : ${r.exemplaires}/${CARTES_NIVEAUX.fusion} pour fusionner.`}${r.activee ? ' Elle est déjà active.' : ''}</p>`;
+      // Une carte épique ou légendaire : un éclair de lumière et des confettis dorés
+      if (c.rarete === 'epique' || c.rarete === 'legendaire') eclatRoulette(c.rarete);
+      $('rl-resultat').innerHTML = `<div class="rl-gagne r-${c.rarete}" style="--rarete:${rar.couleur}"><span class="rl-rar">${rar.nom}</span><span class="rl-ico">${c.icone}</span><b>${c.nom}</b><small>${texteBonus(c, r.niv)}</small></div>
+        <p>${r.nouvelle ? 'Nouvelle carte !' : r.fusion ? `Tu en as ${r.exemplaires} : tu peux la <b>fusionner</b> !` : `Doublon : ${r.exemplaires}/${CARTES_NIVEAUX.fusion} pour fusionner.`}${r.activee ? ' Elle est déjà active.' : ''}</p>
+        ${r.collection ? `<p class="rl-collection">🎉 Collection « ${r.collection.nom} » complète : ${pourcent(r.collection.valeur)} ${EFFETS_CARTES[r.collection.effet]}, pour toujours !</p>` : ''}`;
       $('rl-resultat').hidden = false; $('rl-boutons').hidden = false;
-      $('rl-encore').hidden = J.grainsOr(E()) < k.prix;
+      $('rl-encore').hidden = J.grainsOr(E()) < k.prix && !J.caissesGratuites(E(), k.id);
       c.rarete === 'legendaire' || c.rarete === 'epique' ? sons.succes() : sons.tinte();
     }, 5400);
   }
+  // ---------- La roue du matin : une vraie roue qui tourne, puis le bonus du jour ----------
+  const segRoue = 360 / ROUE.length;
+  $('roue-disque').style.background = `conic-gradient(${ROUE.map((s, k) => `${s.couleur} ${k * segRoue}deg ${(k + 1) * segRoue}deg`).join(', ')})`;
+  $('roue-disque').innerHTML = ROUE.map((s, k) => `<span style="transform:rotate(${(k + .5) * segRoue}deg)"><i>${s.icone}</i></span>`).join('');
+  let angleRoue = 0;
+  function lancerRoue() {
+    const r = J.tournerRoue(E(), jeu.auj); if (!r) return;
+    jeu.sauver(); pauserPourLire();
+    $('roue').hidden = false; $('roue-resultat').hidden = true; $('roue-ok').hidden = true;
+    // La flèche est en haut : on tourne pour amener le milieu du segment gagnant sous la flèche
+    const cible = 360 - (r.index + .5) * segRoue + (Math.random() - .5) * segRoue * .6;
+    angleRoue = angleRoue - (angleRoue % 360) + 360 * 6 + cible;
+    const disque = $('roue-disque');
+    requestAnimationFrame(() => { disque.style.transition = 'transform 4.5s cubic-bezier(.12,.7,.1,1)'; disque.style.transform = `rotate(${angleRoue}deg)`; });
+    setTimeout(() => {
+      $('roue-resultat').innerHTML = `<span>${r.segment.icone}</span><b>${r.segment.nom}</b><small>${['clients', 'grain', 'prix'].includes(r.segment.id) ? (J.ouvert(E()) ? 'Pour toute la journée en cours.' : 'Pour la prochaine journée.') : 'C’est dans ta poche !'}</small>`;
+      $('roue-resultat').hidden = false; $('roue-ok').hidden = false;
+      r.segment.id === 'jackpot' ? sons.succes() : sons.tinte();
+    }, 4600);
+  }
+  $('roue-ok').onclick = () => { $('roue').hidden = true; sons.clic(); reprendre(); majMarche(); };
   $('rl-ok').onclick = () => { $('roulette').hidden = true; sons.clic(); reprendre(); majMarche(); };
   $('rl-encore').onclick = () => { $('roulette').hidden = true; reprendre(); if (caisseEnCours) lancerRoulette(caisseEnCours); };
   // ---------- Revenir le lendemain : le courrier de mamie et les histoires des habitués ----------
@@ -170,7 +242,10 @@ export function creerUI({ jeu, scene }) {
   function afficherLettre(l, gains = []) {
     pauserPourLire();
     const mamie = l.de === 'Mamie Odette';
-    ouvrirPapier(`<div class="lettre"><div class="lt-tete"><span>${mamie ? `Une lettre de mamie · ${l.numero}/${l.total}` : `De la part de : ${esc(l.de)}`}</span><h2>${esc(l.titre)}</h2></div>
+    // Une lettre neuve sort de son enveloppe (le rabat s'ouvre, puis la lettre glisse) ; une lettre relue s'affiche directement
+    const neuve = gains.length > 0;
+    ouvrirPapier(`${neuve ? '<div class="env-anim" aria-hidden="true"><span class="env-fond"></span><span class="env-rabat"></span><span class="env-cachet">♥</span></div>' : ''}
+      <div class="lettre${neuve ? ' sort' : ''}"><div class="lt-tete"><span>${mamie ? `Une lettre de mamie · ${l.numero}/${l.total}` : `De la part de : ${esc(l.de)}`}</span><h2>${esc(l.titre)}</h2></div>
       <p>${esc(l.texte)}</p>${mamie ? '<p class="lt-signe">Ta mamie qui t’embrasse</p>' : ''}${cadeaux(gains)}</div>`);
   }
   function ouvrirCourrier() {
@@ -343,6 +418,7 @@ export function creerUI({ jeu, scene }) {
   // ---------- Niveau du café : la barre d'XP de l'en-tête, et la fête à chaque niveau ----------
   const nomDeblocage = d => [d.mur && `mur « ${J.CATALOGUE_MURS[d.mur].nom} »`, d.sol && `sol « ${J.CATALOGUE_SOLS[d.sol].nom} »`, d.travaux && T[d.travaux].nom].filter(Boolean).join(', ');
   function celebrerNiveau(n) {
+    const etoile = $('niveau-cafe'); etoile.classList.remove('monte'); void etoile.offsetWidth; etoile.classList.add('monte');
     const deb = n.debloque ? `Débloqué : ${nomDeblocage(n.debloque)}. ` : '';
     const emp = n.emplacement ? ' Nouvel emplacement de carte au marché !' : '';
     celebrer({ genre: n.coffre ? 'Niveau supérieur · coffre !' : 'Niveau supérieur', titre: `Niveau ${n.niveau}`, texte: `${deb}Tes postes peuvent monter jusqu’au niveau ${n.nivMaxPoste}. +${n.or} grains d’or.${emp}`, prime: n.prime });
@@ -524,7 +600,8 @@ export function creerUI({ jeu, scene }) {
     h += `<div class="section-titre">Candidats · nouveaux chaque lundi</div>`;
     h += e.candidats.length ? e.candidats.map(c => {
       const trait = c.trait ? J.CATALOGUE_TRAITS[c.trait] : null, cout = c.salaire * PERSONNEL.charges * 7;
-      return carte({ icone: ICONES_ROLE[c.role], nom: `${c.nom} ${pips(c.comp)}`, tags: `<span class="tag cat">${ROLES[c.role]}</span>`,
+      return carte({ icone: c.legende ? '🌟' : ICONES_ROLE[c.role], nom: `${c.nom} ${pips(c.comp)}`, cls: c.legende ? 'legende' : '',
+        tags: `<span class="tag cat">${ROLES[c.role]}</span>${c.legende ? '<span class="tag legende">Légende</span>' : ''}`,
         desc: `${fmt(c.salaire)}/h · environ ${fmt(cout)} par jour pour 7 h (matin + midi)${trait ? ` · <i>${trait.nom} : ${trait.desc}</i>` : ''}`,
         bouton: `<button class="btn mini vert" data-embauche="${c.id}">Embaucher</button>` });
     }).join('') : '<p class="legende">Plus de candidat cette semaine. D’autres se présenteront lundi.</p>';
@@ -1051,6 +1128,9 @@ export function creerUI({ jeu, scene }) {
     dernierArgent = e.argent;
     $('b-marche-or').textContent = J.grainsOr(e);
     $('b-marche').classList.toggle('pret', J.grainsOr(e) >= CAISSES[0].prix);
+    // Pastille : ce qui attend au marché (roue du matin, caisses offertes)
+    const aFaire = (J.roueDispo(e, jeu.auj) ? 1 : 0) + CAISSES.reduce((n, k) => n + J.caissesGratuites(e, k.id), 0);
+    $('b-marche').dataset.badge = aFaire || '';
     const pn = J.progresNiveau(e);
     $('nc-num').textContent = pn.niveau; $('nc-barre').style.width = (pn.part * 100).toFixed(1) + '%';
     // L'en-tête d'un gérant : l'heure et la date, puis l'affluence en mots simples (pas d'euros qui défilent)
@@ -1090,6 +1170,10 @@ export function creerUI({ jeu, scene }) {
       }
       if (o) { $('obj-txt').textContent = o.texte; $('obj-prime').textContent = o.prime ? '+' + fmt(J.primeObjectif(e, o)) : ''; }
       majCommandes(e);
+      // Le bandeau de l'événement du quartier : il s'allume pendant les heures de foule
+      const ev = J.ouvert(e) ? J.evtQuartier(e) : null, enCours = ev && e.horloge >= ev.de && e.horloge < ev.a;
+      $('evt-jour').hidden = !ev;
+      if (ev) { $('evt-jour').innerHTML = `<span>${ev.icone}</span><b>${esc(ev.nom)}</b><small>${enCours ? 'c’est maintenant, foule !' : e.horloge < ev.de ? `à ${ev.de} h` : 'terminé'}</small>`; $('evt-jour').classList.toggle('actif', !!enCours); }
       $('nom').textContent = `${J.nomCafe(e)} · ${J.nomVille(e)}`;
       $('etoiles').innerHTML = etoilesTxt(e.rep);
       let puces = '';
@@ -1121,7 +1205,7 @@ export function creerUI({ jeu, scene }) {
       }
     }
     accPanneau += dt;
-    if (accPanneau > 1) { accPanneau = 0; if (ouvert === 'p-stock') majStock(); if (ouvert === 'p-travaux') majTravaux(); if (ouvert === 'p-carnet') majCarnet(); if (ouvert === 'p-marche' && ongletMarche === 'defis') majMarche(); }
+    if (accPanneau > 1) { accPanneau = 0; if (ouvert === 'p-stock') majStock(); if (ouvert === 'p-travaux') majTravaux(); if (ouvert === 'p-carnet') majCarnet(); if (ouvert === 'p-marche' && (ongletMarche === 'defis' || ongletMarche === 'ligue')) majMarche(); }
   }
 
   function objectifAtteint(o) {

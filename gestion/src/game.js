@@ -11,6 +11,7 @@ import {
   LETTRES, LETTRES_QUARTIER, LETTRE_QUARTIER, SECRET_MAMIE, AMITIE, CADEAUX_HABITUES, HISTOIRES_HABITUES,
   NIVEAU_CAFE, XP, DEBLOCAGES, NIVEAUX_POSTES, COMMANDES, CLIENTS_COMMANDES, ABSENCE, VISITEURS, VISITE_RARE,
   OR, MISSIONS, RARETES, CARTES_NIVEAUX, EMPLACEMENTS, CARTES as CARTES_COLLECTION, CAISSES,
+  COLLECTIONS, BOUTIQUE, UNIFORMES, LIGUE, CAFES_RIVAUX, EVENEMENTS_QUARTIER, EVT_QUARTIER, TRAITS_LEGENDE, LEGENDES, ROUE, CONCOURS_DECO,
 } from './data.js';
 const CA = Object.fromEntries(CARTE.map(p => [p.id, p]));
 const MK = Object.fromEntries(MARKETING.map(m => [m.id, m]));
@@ -22,7 +23,7 @@ const F = Object.fromEntries(FOURNISSEURS.map(f => [f.id, f]));
 const MET = Object.fromEntries(METEOS.map(x => [x.id, x])), BO = Object.fromEntries(BOISSONS.map(x => [x.id, x]));
 const FO = Object.fromEntries(FORMULES.map(x => [x.id, x]));
 const MU = Object.fromEntries(MURS.map(x => [x.id, x])), SO = Object.fromEntries(SOLS.map(x => [x.id, x]));
-const TR = Object.fromEntries(TRAITS.map(x => [x.id, x]));
+const TR = Object.fromEntries([...TRAITS, ...TRAITS_LEGENDE].map(x => [x.id, x]));
 const PR = Object.fromEntries(PRETS.map(x => [x.id, x]));
 export { M as CATALOGUE_MACHINES, MO as CATALOGUE_MOULINS, F as CATALOGUE_FOURNISSEURS, MET as CATALOGUE_METEOS, BO as CATALOGUE_BOISSONS,
   FO as CATALOGUE_FORMULES, MU as CATALOGUE_MURS, SO as CATALOGUE_SOLS, TR as CATALOGUE_TRAITS, PR as CATALOGUE_PRETS };
@@ -34,9 +35,10 @@ export const HEURES_MOMENT = MOMENTS.map(m => m.a - m.de);
 export function nouvelleMeta() {
   return { succes: [], histoire: [], tasses: 0, totalGagne: 0, reparations: 0, critiques: 0, habitues: {}, nomCafe: '', ville: 0, clientsTotal: 0,
     courrier: null, amities: {}, cadeaux: [], secret: false, xpBonus: 0, niveau: 1, album: {}, visiteJour: 0,
-    grainsOr: OR.depart, orTotal: 0, cartes: {}, cartesActives: [], caissesOuvertes: 0 };
+    grainsOr: OR.depart, orTotal: 0, cartes: {}, cartesActives: [], caissesOuvertes: 0,
+    caissesGratuites: {}, uniforme: 'cafe', uniformes: ['cafe'], roueJour: '' };
 }
-export const nouvelleJournee = () => ({ recettes: 0, depenses: 0, charges: 0, tasses: 0, clients: 0, perdus: 0, satisfaction: 0,
+export const nouvelleJournee = () => ({ recettes: 0, depenses: 0, charges: 0, tasses: 0, clients: 0, perdus: 0, satisfaction: 0, commandes: 0,
   viennoiseries: 0, invendus: 0, produits: {}, remises: 0,
   moments: MOMENTS.map(() => ({ t: 0, ventes: 0, station: 0, clients: 0, stock: 0, stations: [0, 0, 0, 0] })),
   heures: Array.from({ length: HORAIRES.fermeture - HORAIRES.ouverture }, () => ({ ventes: 0, recettes: 0, station: 0, clients: 0, stock: 0 })) });
@@ -64,7 +66,7 @@ export function nouvelEtat(meta = nouvelleMeta()) {
     meteo: 'nuages', meteoDemain: 'soleil', boisson: 'aucune', deco: { mur: 'creme', sol: 'parquet', vus: ['creme', 'parquet'] }, formules: {}, defi: null,
     dosage: DOSAGE.reference, service: 1,
     carte: carteDepart(), campagnes: [], fidelite: { active: false, membres: 0 }, gazettes: [],
-    commandesSpe: [], attenteCommande: 0, compteurCommandes: 0,
+    commandesSpe: [], attenteCommande: 0, compteurCommandes: 0, ligue: null, boutique: null, evtQuartier: null, roue: null,
     evts: [], ruptureDepuis: 0, rupturesVues: 0, lait: 0, laitVide: false,
     phase: 'service', horloge: HORAIRES.ouverture, nuitReste: 0, jour: 1,
     journee: nouvelleJournee(), bilans: [], decision: null, decisionsDuJour: [],
@@ -215,7 +217,7 @@ export const heuresPlanifiees = p => p.formation ? 0 : p.planning.reduce((s, on,
 export const presentA = (p, k) => !!p.planning[k] && !p.formation && !(p.absent != null && k >= p.absent);
 export function vitesseEmploye(p) {
   const [v0, v1] = PERSONNEL.vitesse[p.role] || PERSONNEL.vitesse.salle;
-  return (v0 + v1 * p.comp) * (p.trait === 'rapide' ? 1.15 : p.trait === 'distrait' ? .92 : 1) * (1 - .45 * (p.fatigue || 0));
+  return (v0 + v1 * p.comp) * (p.trait === 'champion' ? 1.4 : p.trait === 'rapide' ? 1.15 : p.trait === 'distrait' ? .92 : 1) * (1 - .45 * (p.fatigue || 0));
 }
 export function coutJournee(p) {
   if (p.gerant) return 0;
@@ -232,6 +234,11 @@ export function genererCandidats(e, rnd = Math.random, n = 3) {
     const salaire = Math.round(salaireMarche(comp) * (trait === 'apprenti' ? .9 : 1 + (rnd() - .4) * .15) * 100) / 100;
     return { id: 'c' + (e.prochainId++), nom: PRENOMS_EMPLOYES[Math.floor(rnd() * PRENOMS_EMPLOYES.length) % PRENOMS_EMPLOYES.length], role, comp, salaire: Math.max(PERSONNEL.smic, salaire), trait };
   });
+  // De temps en temps, un candidat de légende : un trait unique, et un salaire qui va avec
+  if (e.jour >= LEGENDES.depuisJour && rnd() < LEGENDES.chance) {
+    const c = e.candidats[Math.floor(rnd() * e.candidats.length) % e.candidats.length], t = TRAITS_LEGENDE[Math.floor(rnd() * TRAITS_LEGENDE.length) % TRAITS_LEGENDE.length];
+    c.trait = t.id; c.comp = 4 + (rnd() < .4 ? 1 : 0); c.salaire = Math.round(salaireMarche(c.comp) * LEGENDES.salaire * 100) / 100; c.legende = true;
+  }
   return e.candidats;
 }
 export function embaucher(e, id) {
@@ -475,7 +482,7 @@ export function demandeParHeure(e) {
   const f = formuleDuMoment(e);
   return DEMANDE_BASE * difficulte(e).demande * e.notoriete * (.4 + e.rep * .2) * attrait(e) * courbeHeure(e.horloge) * AFFLUENCE_JOUR[jourSemaine(e)] * saison(e).demande
     * multMeteo(e) * facteurPrix(e) * (1 + (f?.demande || 0)) * multEvts(e) * (villeInfo(e).demande || 1)
-    * multVariete(e) * multCampagnes(e) * (1 + bonusFidelite(e));
+    * multVariete(e) * multCampagnes(e) * (1 + bonusFidelite(e)) * multEvtQuartier(e);
 }
 export const demande = e => demandeParHeure(e) / SPH;
 export function bilan(e) {
@@ -508,7 +515,7 @@ function partsSatisfaction(e, b) {
   const attente = b.demande > 0 ? Math.min(1, b.chaine * 1.3 / b.demande) : 1;
   const r = ratioPrixCarte(e), prix = r <= 1 ? 1 : Math.max(0, 1 - (r - 1) * 2.5);
   const ambiance = Math.min(1, .35 + bonusDeco(e) * .45 + (harmonie(e) ? .1 : 0));
-  const sourire = e.equipe.some(p => p.trait === 'souriant' && p.role === 'salle' && presentA(p, momentIndex(e))) ? .15 : 0;
+  const sourire = e.equipe.some(p => ((p.trait === 'souriant' && p.role === 'salle') || p.trait === 'star') && presentA(p, momentIndex(e))) ? .15 : 0;
   return { gout, attente, prix, ambiance, sourire };
 }
 export function satisfaction(e, b = bilan(e)) {
@@ -657,6 +664,7 @@ function finDuMois(e, arrivees) {
   e.mois = nouveauMois();
   arrivees.push({ finMois: m });
   if (m.numero % 12 === 0) arrivees.push({ finAnnee: bilanAnnee(e) });
+  arrivees.push({ concoursDeco: concoursDeco(e) });
 }
 
 // ---------- Difficulté ----------
@@ -917,7 +925,7 @@ function fermer(e, rnd = Math.random) {
     if (p.formation) { p.comp = Math.min(5, p.comp + (p.trait === 'apprenti' && p.comp < 3 ? 2 : 1)); p.formation = 0; e.stats.formations++; p.fatigue = Math.max(0, p.fatigue - .2); arrivees.push({ formation: p.nom, comp: p.comp }); continue; }
     p.heuresSemaine = (p.heuresSemaine || 0) + h;
     if (p.gerant) continue;
-    const endurance = p.trait === 'endurant' ? .6 : 1;
+    const endurance = p.trait === 'infatigable' ? .15 : p.trait === 'endurant' ? .6 : 1;
     p.fatigue = Math.max(0, Math.min(1, p.fatigue + (h > 8 ? (h - 8) * .08 * endurance : h === 0 ? -.4 : -.12)));
     const bienPaye = p.salaire >= salaireMarche(p.comp) - .01;
     p.moral = Math.max(0, Math.min(1, p.moral + (p.fatigue < .5 ? .03 : 0) + (bienPaye ? .02 : -.05) - (p.fatigue > .7 ? .08 : 0)));
@@ -942,7 +950,8 @@ function fermer(e, rnd = Math.random) {
     else { e.faillite = true; arrivees.push({ faillite: true }); }
   } else if (e.argent < DECOUVERT.alerte) arrivees.push({ alerteBanque: true });
   // Pour les courbes du journal : l'état du café ce soir-là
-  Object.assign(b, { caisse: e.argent, note: e.rep, notoriete: e.notoriete, membres: e.fidelite?.active ? e.fidelite.membres : 0 });
+  Object.assign(b, { caisse: e.argent, note: e.rep, notoriete: e.notoriete, membres: e.fidelite?.active ? e.fidelite.membres : 0, commandes: e.journee.commandes || 0 });
+  majLigue(e, b, rnd, arrivees);
   return { bilan: b, arrivees };
 }
 export function ouvrir(e, rnd = Math.random) {
@@ -961,6 +970,9 @@ export function ouvrir(e, rnd = Math.random) {
   if (a(e, 'vitrine') && e.viennoiseries.commande > 0) { const n = e.viennoiseries.commande; depenser(e, n * VIENNOISERIES.cout); e.viennoiseries.stock = n; }
   e.phase = 'service'; e.horloge = HORAIRES.ouverture; e.nuitReste = 0; e.jour++;
   if (jourSemaine(e) === 0) e.equipe.forEach(p => { p.heuresSemaine = 0; });
+  // Un événement du quartier, une journée sur cinq environ
+  e.evtQuartier = e.jour >= EVT_QUARTIER.depuisJour && rnd() < EVT_QUARTIER.chance ? EVENEMENTS_QUARTIER[Math.floor(rnd() * EVENEMENTS_QUARTIER.length)].id : null;
+  if (e.evtQuartier) arrivees.push({ evtQuartier: EVENEMENTS_QUARTIER.find(x => x.id === e.evtQuartier) });
   const prevue = e.meteoDemain || 'nuages'; e.meteo = rnd() < FIABILITE_PREVISION ? prevue : tirerMeteo(rnd, e);
   if (e.meteo !== prevue) arrivees.push({ surpriseMeteo: { prevue, reelle: e.meteo } });
   planifierDecisions(e, rnd);
@@ -974,6 +986,9 @@ export function tick(e, dt, rnd = Math.random) {
   if (!ouvert(e)) return { ...bilan(e), recette: 0, arrivees };
   // Les trois missions du jour, tirées au premier instant de chaque journée
   if (!e.missions || e.missionsJour !== e.jour) { e.missions = tirerMissions(e, rnd); e.missionsJour = e.jour; e.missionsParfait = false; }
+  if (!e.boutique || e.boutique.jour !== e.jour) e.boutique = tirerBoutique(e, rnd);
+  if (!e.ligue) e.ligue = nouvelleSemaine(e, 0, rnd);
+  if (e.roue && e.roue.jour < e.jour) e.roue = null;
   for (const s of e.st) {
     if (s.panne && reparateurPresent(e)) { s.panne.auto -= dt; if (s.panne.auto <= 0) { s.panne = null; arrivees.push({ reparee: true }); } }
   }
@@ -1062,6 +1077,9 @@ const TESTS_SUCCES = {
   albumComplet: e => VISITEURS.every(v => e.meta.album?.[v.id]),
   collection12: e => Object.keys(e.meta.cartes || {}).length >= 12,
   legendaire: e => Object.keys(e.meta.cartes || {}).some(id => CR[id]?.rarete === 'legendaire'),
+  collection1: e => COLLECTIONS.some(k => collectionComplete(e, k.id)),
+  ligueOr: e => (e.ligue?.division || 0) >= 2,
+  legendeEquipe: e => e.equipe.some(p => TRAITS_LEGENDE.some(t => t.id === p.trait)),
 };
 export function verifierSucces(e) {
   const nouveaux = SUCCES.filter(s => !e.meta.succes.includes(s.id) && TESTS_SUCCES[s.id]?.(e));
@@ -1200,7 +1218,7 @@ function majCommandes(e, dt, rnd, arrivees) {
     if (c.fait >= c.quantite) {
       c.prime = Math.round(c.prime * (1 + bonusCarte(e, 'commandes')));
       encaisserPrime(e, c.prime); gagnerXp(e, c.xp); c.or = gagnerOr(e, OR.commande); c.finie = true;
-      e.stats.commandesFaites = (e.stats.commandesFaites || 0) + 1;
+      e.stats.commandesFaites = (e.stats.commandesFaites || 0) + 1; e.journee.commandes = (e.journee.commandes || 0) + 1;
       arrivees.push({ commandeFaite: c });
     } else { c.reste -= dt; if (c.reste <= 0) { c.finie = true; arrivees.push({ commandeRatee: c }); } }
   }
@@ -1273,12 +1291,22 @@ export function gagnerOr(e, n) {
 export const nbEmplacements = e => EMPLACEMENTS.filter(x => niveauCafe(e) >= x.niveau).length;
 export const carteDe = (e, id) => e.meta.cartes?.[id] || null;
 export const valeurCarte = (c, niv = 1) => c.valeur * CARTES_NIVEAUX.mult[Math.min(Math.max(1, niv), CARTES_NIVEAUX.max) - 1];
+// Le bonus d'un effet : cartes actives, collections complètes, la roue du jour, et une star dans l'équipe (+5 % de clients)
 export function bonusCarte(e, effet) {
-  return (e.meta?.cartesActives || []).reduce((s, id) => {
+  const cartes = (e.meta?.cartesActives || []).reduce((s, id) => {
     const c = CR[id], p = carteDe(e, id);
     return s + (c && p && c.effet === effet ? valeurCarte(c, p.niv) : 0);
   }, 0);
+  const star = effet === 'clients' && e.equipe?.some(p => p.trait === 'star') ? .05 : 0;
+  return cartes + bonusCollections(e, effet) + bonusRoue(e, effet) + star;
 }
+export const collectionComplete = (e, idCol) => CARTES_COLLECTION.filter(c => c.collection === idCol).every(c => carteDe(e, c.id));
+const bonusCollections = (e, effet) => COLLECTIONS.reduce((s, k) => s + (k.effet === effet && collectionComplete(e, k.id) ? k.valeur : 0), 0);
+// La roue du matin : le bonus vaut pour la journée de jeu choisie (et la nuit d'avant, pour les commandes de grain)
+const bonusRoue = (e, effet) => {
+  const r = e.roue; if (!r || r.effet !== effet) return 0;
+  return r.jour === e.jour || (!ouvert(e) && r.jour === e.jour + 1) ? r.valeur : 0;
+};
 export function tirerCarte(caisse, rnd = Math.random) {
   const ch = caisse.chances, total = Object.values(ch).reduce((x, y) => x + y, 0);
   let x = rnd() * total, rarete = 'commune';
@@ -1289,17 +1317,121 @@ export function tirerCarte(caisse, rnd = Math.random) {
 export function ouvrirCaisse(e, idCaisse, rnd = Math.random) {
   const k = CAISSES.find(x => x.id === idCaisse);
   if (!k) return { erreur: 'indispo' };
-  if (grainsOr(e) < k.prix) return { erreur: 'or' };
-  e.meta.grainsOr -= k.prix; e.meta.caissesOuvertes = (e.meta.caissesOuvertes || 0) + 1;
+  // Une caisse gratuite (ligue, roue) passe avant les grains d'or
+  const gratuite = (e.meta.caissesGratuites?.[idCaisse] || 0) > 0;
+  if (!gratuite && grainsOr(e) < k.prix) return { erreur: 'or' };
+  if (gratuite) e.meta.caissesGratuites[idCaisse]--; else e.meta.grainsOr -= k.prix;
+  e.meta.caissesOuvertes = (e.meta.caissesOuvertes || 0) + 1;
   const c = tirerCarte(k, rnd);
+  return { carte: c, gratuite, ...ajouterCarte(e, c.id) };
+}
+export function ajouterCarte(e, id) {
   e.meta.cartes = e.meta.cartes || {};
-  const p = e.meta.cartes[c.id] || (e.meta.cartes[c.id] = { niv: 1, n: 0 });
+  const col = CR[id].collection, avant = col && collectionComplete(e, col);
+  const p = e.meta.cartes[id] || (e.meta.cartes[id] = { niv: 1, n: 0 });
   p.n++;
   // Une place libre : la nouvelle carte s'active toute seule
   const actives = e.meta.cartesActives || (e.meta.cartesActives = []);
   let activee = false;
-  if (!actives.includes(c.id) && actives.length < nbEmplacements(e)) { actives.push(c.id); activee = true; }
-  return { carte: c, nouvelle: p.n === 1 && p.niv === 1, exemplaires: p.n, niv: p.niv, activee, fusion: peutFusionner(e, c.id) };
+  if (!actives.includes(id) && actives.length < nbEmplacements(e)) { actives.push(id); activee = true; }
+  const collection = col && !avant && collectionComplete(e, col) ? COLLECTIONS.find(x => x.id === col) : null;
+  return { nouvelle: p.n === 1 && p.niv === 1, exemplaires: p.n, niv: p.niv, activee, fusion: peutFusionner(e, id), collection };
+}
+export const caissesGratuites = (e, id) => e.meta.caissesGratuites?.[id] || 0;
+function offrirCaisse(e, id, n = 1) { e.meta.caissesGratuites = { ...(e.meta.caissesGratuites || {}), [id]: caissesGratuites(e, id) + n }; }
+
+// ---------- La boutique du jour : 3 cartes précises, à prix fixe ----------
+export function tirerBoutique(e, rnd = Math.random) {
+  const rar = ['commune', rnd() < .5 ? 'commune' : 'rare', rnd() < .06 ? 'legendaire' : rnd() < .35 ? 'epique' : 'rare'];
+  const pris = new Set();
+  const offres = rar.map(r => {
+    const l = CARTES_COLLECTION.filter(c => c.rarete === r && !pris.has(c.id));
+    const c = l[Math.floor(rnd() * l.length) % l.length]; pris.add(c.id);
+    return { carte: c.id, prix: BOUTIQUE.prix[r], achete: false };
+  });
+  return { jour: e.jour, offres };
+}
+export function acheterOffre(e, k) {
+  const o = e.boutique?.offres?.[k];
+  if (!o || o.achete) return { erreur: 'indispo' };
+  if (grainsOr(e) < o.prix) return { erreur: 'or' };
+  e.meta.grainsOr -= o.prix; o.achete = true;
+  return { carte: CR[o.carte], ...ajouterCarte(e, o.carte) };
+}
+
+// ---------- Les uniformes de l'équipe ----------
+export const uniforme = e => UNIFORMES.find(u => u.id === e.meta.uniforme) || UNIFORMES[0];
+export function choisirUniforme(e, id) {
+  const u = UNIFORMES.find(x => x.id === id); if (!u) return 'indispo';
+  const a2 = e.meta.uniformes || (e.meta.uniformes = ['cafe']);
+  if (!a2.includes(id)) {
+    if (grainsOr(e) < u.prix) return 'or';
+    e.meta.grainsOr -= u.prix; a2.push(id);
+  }
+  e.meta.uniforme = id; return 'ok';
+}
+
+// ---------- La ligue de la semaine : 9 cafés rivaux simulés, points = clients + 30 par commande ----------
+const pointsBilan = b => Math.round((b.clients || 0) + LIGUE.pointsCommande * (b.commandes || 0));
+function nouvelleSemaine(e, division, rnd = Math.random) {
+  const j = e.bilans.slice(-7), base = j.length ? j.reduce((s, b) => s + pointsBilan(b), 0) / j.length : LIGUE.depart;
+  const noms = [...CAFES_RIVAUX].sort(() => rnd() - .5).slice(0, LIGUE.rivaux);
+  const mult = LIGUE.divisions[division].mult;
+  return { semaine: Math.floor((e.jour - 1) / 7), division, points: 0, rivaux: noms.map(nom => ({ nom, points: 0, rythme: Math.round(base * mult * (.6 + rnd() * .75)) })) };
+}
+export function classementLigue(e) {
+  const l = e.ligue; if (!l) return [];
+  const enCours = ouvert(e), part = enCours ? avanceeJournee(e) : 0;
+  const moi = { nom: nomCafe(e), points: l.points + (enCours ? pointsBilan(e.journee) : 0), moi: true };
+  return [moi, ...l.rivaux.map(r => ({ nom: r.nom, points: Math.round(r.points + r.rythme * part) }))].sort((x, y) => y.points - x.points);
+}
+export const placeLigue = e => classementLigue(e).findIndex(x => x.moi) + 1;
+function majLigue(e, b, rnd, arrivees) {
+  if (!e.ligue) e.ligue = nouvelleSemaine(e, 0, rnd);
+  e.ligue.points += pointsBilan(b);
+  e.ligue.rivaux.forEach(r => { r.points += Math.round(r.rythme * (.8 + rnd() * .4)); });
+  e.ligue.placeHier = placeLigue(e);   // pour la flèche ▲▼ du classement le lendemain
+  if (jourSemaine(e) !== 6) return;   // la semaine se termine le dimanche soir
+  const place = placeLigue(e), rec = LIGUE.recompenses[place - 1] || { or: 5 };
+  const or = gagnerOr(e, rec.or); if (rec.caisse) offrirCaisse(e, rec.caisse);
+  const avant = e.ligue.division, nb = LIGUE.rivaux + 1;
+  let div = avant;
+  if (place <= LIGUE.montent && div < LIGUE.divisions.length - 1) div++;
+  else if (place > nb - LIGUE.descendent && div > 0) div--;
+  arrivees.push({ finLigue: { place, or, caisse: rec.caisse || null, avant, apres: div } });
+  e.ligue = nouvelleSemaine(e, div, rnd);
+}
+
+// ---------- Les événements du quartier ----------
+export const evtQuartier = e => EVENEMENTS_QUARTIER.find(x => x.id === e.evtQuartier) || null;
+export function multEvtQuartier(e) {
+  const v = evtQuartier(e); if (!v || !ouvert(e)) return 1;
+  return e.horloge >= v.de && e.horloge < v.a ? v.mult : 1;
+}
+
+// ---------- La roue du matin : un tour gratuit par vrai jour ----------
+export const roueDispo = (e, auj) => e.meta.roueJour !== auj;
+export function tournerRoue(e, auj, rnd = Math.random) {
+  if (!roueDispo(e, auj)) return null;
+  const total = ROUE.reduce((s, x) => s + x.poids, 0);
+  let x = rnd() * total, k = 0;
+  for (; k < ROUE.length - 1; k++) { x -= ROUE[k].poids; if (x < 0) break; }
+  const s = ROUE[k];
+  e.meta.roueJour = auj;
+  if (s.id === 'or' || s.id === 'jackpot') gagnerOr(e, s.valeur);
+  else if (s.id === 'argent') encaisserPrime(e, s.valeur);
+  else if (s.id === 'xp') gagnerXp(e, s.valeur);
+  else if (s.id === 'caisse') offrirCaisse(e, 'carton', s.valeur);
+  else e.roue = { effet: s.id, valeur: s.valeur, jour: ouvert(e) ? e.jour : e.jour + 1 };
+  return { index: k, segment: s };
+}
+
+// ---------- Le concours de déco : chaque fin de mois ----------
+export const scoreDeco = e => Math.round((bonusDeco(e) + (harmonie(e) ? .3 : 0)) * 100) / 100;
+function concoursDeco(e) {
+  const score = scoreDeco(e), k = CONCOURS_DECO.places.findIndex(p => score >= p.seuil);
+  const or = gagnerOr(e, k >= 0 ? CONCOURS_DECO.places[k].or : CONCOURS_DECO.participation);
+  return { place: k + 1, nom: k >= 0 ? CONCOURS_DECO.places[k].nom : 'participation', or, score, prochain: k > 0 ? CONCOURS_DECO.places[k - 1].seuil : k < 0 ? CONCOURS_DECO.places.at(-1).seuil : null };
 }
 export const peutFusionner = (e, id) => { const p = carteDe(e, id); return !!p && p.niv < CARTES_NIVEAUX.max && p.n >= CARTES_NIVEAUX.fusion; };
 export function fusionner(e, id) {

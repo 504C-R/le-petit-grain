@@ -68,6 +68,7 @@
   <div class="puces" id="puces"></div>
   <div class="objectif" id="objectif" hidden><span class="cible">🎯</span><span id="obj-txt"></span><b id="obj-prime"></b></div>
   <div class="defi" id="defi" hidden><span class="d-ico">⚡</span><div class="d-corps"><span id="defi-txt"></span><div class="d-barre"><i id="defi-barre"></i></div></div><b id="defi-prime"></b></div>
+  <div class="evt-jour" id="evt-jour" hidden></div>
   <div class="commandes" id="commandes" hidden></div>
   <!-- Les notifications s'affichent en haut, sous l'objectif : elles ne cachent jamais les boutons et ne captent pas le doigt -->
   <div id="toast" class="cache" aria-live="polite"></div>
@@ -166,7 +167,7 @@
       <div><h3>Le marché</h3><p class="desc">Tes grains d’or : <b id="m-or">0</b>. Ils se gagnent en jouant (missions, commandes, niveaux), jamais avec de l’argent réel.</p></div>
       <button class="fermer" data-fermer aria-label="Fermer">✕</button>
     </div>
-    <div class="onglets-marche" id="m-onglets"><button data-om="defis">Défis du jour</button><button data-om="caisses">Caisses</button><button data-om="cartes">Mes cartes</button></div>
+    <div class="onglets-marche" id="m-onglets"><button data-om="defis">Défis</button><button data-om="caisses">Caisses</button><button data-om="boutique">Boutique</button><button data-om="cartes">Cartes</button><button data-om="ligue">Ligue</button></div>
     <div id="m-liste"></div>
   </div>
 
@@ -182,6 +183,14 @@
 </div>
 
 <div id="fete" hidden><div class="fete-rayons"></div><div class="confettis" id="confettis"></div><div class="fete-carte"><img class="fete-icone" id="fete-icone" src="assets/icones/etoile.svg" alt=""><small id="fete-genre"></small><h2 id="fete-titre"></h2><p id="fete-texte"></p><b class="fete-prime" id="fete-prime"></b><button class="btn vert" id="fete-ok">Super !</button></div></div>
+<div id="roue" hidden>
+  <div class="roue-boite">
+    <div class="rl-titre">🎡 La roue du matin</div>
+    <div class="roue-cadre"><i class="roue-fleche"></i><div class="roue-disque" id="roue-disque"></div><span class="roue-centre">☕</span></div>
+    <div class="roue-resultat" id="roue-resultat" hidden></div>
+    <button class="btn vert" id="roue-ok" hidden>Super !</button>
+  </div>
+</div>
 <div id="roulette" hidden>
   <div class="rl-boite">
     <div class="rl-titre" id="rl-titre">Caisse en carton</div>

@@ -244,6 +244,9 @@ export const SUCCES = [
   { id: 'albumComplet', nom: 'L’album complet', desc: 'Recevoir les 10 visiteurs rares.' },
   { id: 'collection12', nom: 'Le collectionneur', desc: 'Posséder 12 cartes différentes.' },
   { id: 'legendaire', nom: 'Une carte de légende', desc: 'Obtenir une carte légendaire.' },
+  { id: 'collection1', nom: 'Série complète', desc: 'Compléter une collection de 4 cartes.' },
+  { id: 'ligueOr', nom: 'La ligue d’or', desc: 'Atteindre la ligue Or.' },
+  { id: 'legendeEquipe', nom: 'Une légende dans l’équipe', desc: 'Embaucher un employé de légende.' },
 ];
 
 // Récit minimal : un message de mamie aux grandes étapes
@@ -513,30 +516,30 @@ export const EFFETS_CARTES = {
   reserve: 'de place en réserve', grain: 'sur le prix du grain', loyer: 'sur le loyer', commandes: 'sur les primes de commande', or: 'de grains d’or gagnés',
 };
 export const CARTES = [
-  { id: 'tablier', nom: 'Le tablier taché', icone: '🧑‍🍳', rarete: 'commune', effet: 'salle', valeur: .04 },
-  { id: 'cuillere', nom: 'La cuillère en bois', icone: '🥄', rarete: 'commune', effet: 'gout', valeur: .03 },
-  { id: 'jute', nom: 'Le sac de jute', icone: '🛍️', rarete: 'commune', effet: 'reserve', valeur: .06 },
-  { id: 'craie', nom: 'La craie d’ardoise', icone: '🖍️', rarete: 'commune', effet: 'clients', valeur: .03 },
-  { id: 'moulinMain', nom: 'Le moulin à main', icone: '⚙️', rarete: 'commune', effet: 'moulin', valeur: .05 },
-  { id: 'tasseEbrechee', nom: 'La tasse ébréchée', icone: '☕', rarete: 'commune', effet: 'prix', valeur: .02 },
-  { id: 'pigeon', nom: 'Le pigeon du quartier', icone: '🐦', rarete: 'commune', effet: 'or', valeur: .05 },
-  { id: 'ticket', nom: 'Le ticket de caisse', icone: '🧾', rarete: 'commune', effet: 'commandes', valeur: .06 },
-  { id: 'bialetti', nom: 'La cafetière italienne', icone: '🫖', rarete: 'rare', effet: 'bar', valeur: .07 },
-  { id: 'latteArt', nom: 'Le cœur en latte art', icone: '🤍', rarete: 'rare', effet: 'prix', valeur: .04 },
-  { id: 'torrefacteur', nom: 'Le petit torréfacteur', icone: '🔥', rarete: 'rare', effet: 'gout', valeur: .06 },
-  { id: 'veloCargo', nom: 'Le vélo cargo', icone: '🚲', rarete: 'rare', effet: 'clients', valeur: .05 },
-  { id: 'planteVerte', nom: 'Le grand ficus', icone: '🪴', rarete: 'rare', effet: 'salle', valeur: .07 },
-  { id: 'sacMoka', nom: 'Le sac de Moka', icone: '🌰', rarete: 'rare', effet: 'grain', valeur: .06 },
-  { id: 'carnetCommandes', nom: 'Le carnet de commandes', icone: '📒', rarete: 'rare', effet: 'commandes', valeur: .12 },
-  { id: 'levaDoree', nom: 'La machine à levier dorée', icone: '🏆', rarete: 'epique', effet: 'bar', valeur: .12 },
-  { id: 'grainGeisha', nom: 'Le grain Geisha', icone: '🌸', rarete: 'epique', effet: 'gout', valeur: .1 },
-  { id: 'critique', nom: 'L’étoile du guide', icone: '⭐', rarete: 'epique', effet: 'prix', valeur: .07 },
-  { id: 'terrasseSoleil', nom: 'La terrasse au soleil', icone: '☀️', rarete: 'epique', effet: 'clients', valeur: .08 },
-  { id: 'bail', nom: 'Le bail signé', icone: '📜', rarete: 'epique', effet: 'loyer', valeur: .12 },
-  { id: 'tasseMamie', nom: 'La tasse de mamie Odette', icone: '👵', rarete: 'legendaire', effet: 'clients', valeur: .12 },
-  { id: 'grainOr', nom: 'Le grain d’or', icone: '✨', rarete: 'legendaire', effet: 'or', valeur: .4 },
-  { id: 'champion', nom: 'Le champion du monde', icone: '🥇', rarete: 'legendaire', effet: 'bar', valeur: .18 },
-  { id: 'machine1974', nom: 'La machine de 1974', icone: '📻', rarete: 'legendaire', effet: 'gout', valeur: .15 },
+  { id: 'tablier', nom: 'Le tablier taché', icone: '🧑‍🍳', rarete: 'commune', effet: 'salle', valeur: .04, collection: 'salle' },
+  { id: 'cuillere', nom: 'La cuillère en bois', icone: '🥄', rarete: 'commune', effet: 'gout', valeur: .03, collection: 'comptoir' },
+  { id: 'jute', nom: 'Le sac de jute', icone: '🛍️', rarete: 'commune', effet: 'reserve', valeur: .06, collection: 'affaires' },
+  { id: 'craie', nom: 'La craie d’ardoise', icone: '🖍️', rarete: 'commune', effet: 'clients', valeur: .03, collection: 'salle' },
+  { id: 'moulinMain', nom: 'Le moulin à main', icone: '⚙️', rarete: 'commune', effet: 'moulin', valeur: .05, collection: 'atelier' },
+  { id: 'tasseEbrechee', nom: 'La tasse ébréchée', icone: '☕', rarete: 'commune', effet: 'prix', valeur: .02, collection: 'prestige' },
+  { id: 'pigeon', nom: 'Le pigeon du quartier', icone: '🐦', rarete: 'commune', effet: 'or', valeur: .05, collection: 'quartier' },
+  { id: 'ticket', nom: 'Le ticket de caisse', icone: '🧾', rarete: 'commune', effet: 'commandes', valeur: .06, collection: 'quartier' },
+  { id: 'bialetti', nom: 'La cafetière italienne', icone: '🫖', rarete: 'rare', effet: 'bar', valeur: .07, collection: 'comptoir' },
+  { id: 'latteArt', nom: 'Le cœur en latte art', icone: '🤍', rarete: 'rare', effet: 'prix', valeur: .04, collection: 'prestige' },
+  { id: 'torrefacteur', nom: 'Le petit torréfacteur', icone: '🔥', rarete: 'rare', effet: 'gout', valeur: .06, collection: 'atelier' },
+  { id: 'veloCargo', nom: 'Le vélo cargo', icone: '🚲', rarete: 'rare', effet: 'clients', valeur: .05, collection: 'quartier' },
+  { id: 'planteVerte', nom: 'Le grand ficus', icone: '🪴', rarete: 'rare', effet: 'salle', valeur: .07, collection: 'salle' },
+  { id: 'sacMoka', nom: 'Le sac de Moka', icone: '🌰', rarete: 'rare', effet: 'grain', valeur: .06, collection: 'atelier' },
+  { id: 'carnetCommandes', nom: 'Le carnet de commandes', icone: '📒', rarete: 'rare', effet: 'commandes', valeur: .12, collection: 'affaires' },
+  { id: 'levaDoree', nom: 'La machine à levier dorée', icone: '🏆', rarete: 'epique', effet: 'bar', valeur: .12, collection: 'comptoir' },
+  { id: 'grainGeisha', nom: 'Le grain Geisha', icone: '🌸', rarete: 'epique', effet: 'gout', valeur: .1, collection: 'atelier' },
+  { id: 'critique', nom: 'L’étoile du guide', icone: '⭐', rarete: 'epique', effet: 'prix', valeur: .07, collection: 'prestige' },
+  { id: 'terrasseSoleil', nom: 'La terrasse au soleil', icone: '☀️', rarete: 'epique', effet: 'clients', valeur: .08, collection: 'quartier' },
+  { id: 'bail', nom: 'Le bail signé', icone: '📜', rarete: 'epique', effet: 'loyer', valeur: .12, collection: 'affaires' },
+  { id: 'tasseMamie', nom: 'La tasse de mamie Odette', icone: '👵', rarete: 'legendaire', effet: 'clients', valeur: .12, collection: 'salle' },
+  { id: 'grainOr', nom: 'Le grain d’or', icone: '✨', rarete: 'legendaire', effet: 'or', valeur: .4, collection: 'affaires' },
+  { id: 'champion', nom: 'Le champion du monde', icone: '🥇', rarete: 'legendaire', effet: 'bar', valeur: .18, collection: 'comptoir' },
+  { id: 'machine1974', nom: 'La machine de 1974', icone: '📻', rarete: 'legendaire', effet: 'gout', valeur: .15, collection: 'prestige' },
 ];
 // Les caisses du marché : prix en grains d'or et chances de chaque rareté (affichées au joueur)
 export const CAISSES = [
@@ -544,6 +547,71 @@ export const CAISSES = [
   { id: 'bois', nom: 'Caisse en bois', icone: '🧰', prix: 80, chances: { commune: 40, rare: 40, epique: 16, legendaire: 4 } },
   { id: 'or', nom: 'Coffre doré', icone: '👑', prix: 200, chances: { commune: 0, rare: 50, epique: 38, legendaire: 12 } },
 ];
+// Les collections : 6 séries de 4 cartes. Une série complète donne un bonus permanent, en plus des cartes actives.
+export const COLLECTIONS = [
+  { id: 'atelier', nom: 'L’atelier du torréfacteur', icone: '🔥', effet: 'gout', valeur: .05 },
+  { id: 'salle', nom: 'La salle de mamie', icone: '👵', effet: 'clients', valeur: .05 },
+  { id: 'quartier', nom: 'Le quartier', icone: '🏘️', effet: 'commandes', valeur: .15 },
+  { id: 'comptoir', nom: 'Le comptoir', icone: '☕', effet: 'bar', valeur: .08 },
+  { id: 'prestige', nom: 'Le prestige', icone: '⭐', effet: 'prix', valeur: .04 },
+  { id: 'affaires', nom: 'Les affaires', icone: '💼', effet: 'or', valeur: .15 },
+];
+// La boutique du jour : 3 cartes précises à prix fixe, renouvelées à chaque journée de jeu
+export const BOUTIQUE = { offres: 3, prix: { commune: 25, rare: 60, epique: 150, legendaire: 400 } };
+// Les uniformes de l'équipe : la couleur des tabliers, achetée en grains d'or
+export const UNIFORMES = [
+  { id: 'cafe', nom: 'Brun café', couleur: 0x8A5226, prix: 0 },
+  { id: 'sauge', nom: 'Vert sauge', couleur: 0x6F8B6B, prix: 40 },
+  { id: 'bordeaux', nom: 'Bordeaux', couleur: 0x7A2638, prix: 60 },
+  { id: 'marine', nom: 'Bleu marine', couleur: 0x2E3F5C, prix: 60 },
+  { id: 'moutarde', nom: 'Moutarde', couleur: 0xD9A030, prix: 80 },
+  { id: 'rose', nom: 'Rose bonbon', couleur: 0xE59AAE, prix: 80 },
+  { id: 'noir', nom: 'Noir élégant', couleur: 0x2A2A2A, prix: 120 },
+  { id: 'dore', nom: 'Tablier doré', couleur: 0xE8B13A, prix: 300 },
+];
+
+// =================== La ligue de la semaine ===================
+// 10 cafés par ligue (toi et 9 rivaux simulés). Points : clients servis + 30 par commande spéciale réussie.
+// Fin de semaine (dimanche soir) : les 3 premiers montent, les 2 derniers descendent. Récompenses par place.
+export const LIGUE = {
+  divisions: [{ nom: 'Bronze', icone: '🥉', mult: .9 }, { nom: 'Argent', icone: '🥈', mult: 1.05 }, { nom: 'Or', icone: '🥇', mult: 1.2 }, { nom: 'Diamant', icone: '💎', mult: 1.4 }],
+  rivaux: 9, pointsCommande: 30, montent: 3, descendent: 2, depart: 150,
+  recompenses: [{ or: 60, caisse: 'bois' }, { or: 40, caisse: 'carton' }, { or: 25, caisse: 'carton' }, { or: 15 }, { or: 10 }, { or: 10 }, { or: 5 }, { or: 5 }, { or: 5 }, { or: 5 }],
+};
+export const CAFES_RIVAUX = ['Le Bistrot d’Hugo', 'CaféMax Centre', 'La Tasse Bleue', 'Chez Lulu', 'Le Moka Pressé', 'L’Écume', 'Grains de Folie', 'Le Petit Noir',
+  'Brûlerie Saint-Jean', 'Le Comptoir Doré', 'Café des Arts', 'La Bonne Mousse', 'Kawa Club', 'L’Arabica', 'Le Perco', 'Tasse & Tartine', 'Le Zinc', 'Chez Paulette'];
+
+// =================== Les autres idées ===================
+// Les événements du quartier : une journée sur cinq environ (à partir du jour 3), plus de monde à certaines heures
+export const EVENEMENTS_QUARTIER = [
+  { id: 'match', nom: 'Match de foot sur la place', icone: '⚽', desc: 'grosse affluence de 13 h à 15 h', de: 13, a: 15, mult: 2.2 },
+  { id: 'greve', nom: 'Grève des transports', icone: '🚇', desc: 'les gens restent dans le quartier toute la journée', de: 7, a: 19, mult: 1.25 },
+  { id: 'marathon', nom: 'Marathon du quartier', icone: '🏃', desc: 'coureurs et supporters le matin, de 7 h à 11 h', de: 7, a: 11, mult: 1.8 },
+  { id: 'brocante', nom: 'Brocante dans la rue', icone: '🧺', desc: 'du monde de 9 h à 17 h', de: 9, a: 17, mult: 1.4 },
+  { id: 'musique', nom: 'Concert sur la place', icone: '🎸', desc: 'foule en fin de journée, de 16 h à 19 h', de: 16, a: 19, mult: 1.8 },
+  { id: 'salon', nom: 'Salon du livre à la mairie', icone: '📚', desc: 'des visiteurs de 10 h à 16 h', de: 10, a: 16, mult: 1.35 },
+];
+export const EVT_QUARTIER = { chance: .2, depuisJour: 3 };
+// Les employés de légende : un candidat rare de temps en temps, au trait unique (et au salaire qui va avec)
+export const TRAITS_LEGENDE = [
+  { id: 'champion', nom: 'Champion de France', desc: 'va 40 % plus vite', legende: true },
+  { id: 'star', nom: 'Star du quartier', desc: 'les clients l’adorent : +5 % de clients et plus contents', legende: true },
+  { id: 'infatigable', nom: 'Infatigable', desc: 'ne se fatigue presque jamais', legende: true },
+];
+export const LEGENDES = { chance: .1, depuisJour: 4, salaire: 1.35 };
+// La roue du matin : un tour gratuit par vrai jour ; les bonus du jour durent jusqu'à la fin de la journée de jeu
+export const ROUE = [
+  { id: 'clients', nom: '+10 % de clients', icone: '👥', poids: 3, valeur: .1, couleur: '#7CC24A' },
+  { id: 'grain', nom: 'Grain −15 %', icone: '🌰', poids: 3, valeur: .15, couleur: '#C98A4A' },
+  { id: 'or', nom: '+15 grains d’or', icone: '✨', poids: 3, valeur: 15, couleur: '#F5C64A' },
+  { id: 'argent', nom: '+250 €', icone: '💶', poids: 3, valeur: 250, couleur: '#4FA3E0' },
+  { id: 'prix', nom: '+5 % sur le prix juste', icone: '🏷️', poids: 2, valeur: .05, couleur: '#E59AAE' },
+  { id: 'xp', nom: '+120 XP', icone: '⭐', poids: 2, valeur: 120, couleur: '#9B59D0' },
+  { id: 'caisse', nom: 'Caisse en carton offerte', icone: '📦', poids: 2, valeur: 1, couleur: '#E8584F' },
+  { id: 'jackpot', nom: 'Jackpot : +40 grains d’or', icone: '💰', poids: 1, valeur: 40, couleur: '#F0A81E' },
+];
+// Le concours de déco : chaque fin de mois, le quartier note la salle (déco, harmonie, travaux de déco)
+export const CONCOURS_DECO = { places: [{ seuil: 1.35, or: 40, nom: '1re place' }, { seuil: 1, or: 25, nom: '2e place' }, { seuil: .6, or: 15, nom: '3e place' }], participation: 5 };
 
 // =================== Revenir le lendemain (jours réels) ===================
 // Le courrier de mamie : une lettre par jour réel où l'on joue, avec un petit cadeau. Rater un jour ne fait rien perdre :

@@ -1,6 +1,6 @@
 // Service worker : le jeu marche hors ligne après une première visite.
 // Stratégie « réseau d'abord » : on prend toujours la version en ligne si possible, le cache sert de secours.
-const CACHE = 'petit-grain-gestion-v12';   // cache à part de la version idle
+const CACHE = 'petit-grain-gestion-v14';   // cache à part de la version idle
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', ev => ev.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', ev => {

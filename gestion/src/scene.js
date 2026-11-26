@@ -401,11 +401,16 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
 
   const PANTALONS = [0x3E6BB0, 0x5C4A3E, 0x2F8F6B, 0x8A5A3A, 0x4A5A9E, 0xC9A86A, 0x6E86A8];
   const animes = new Set();   // les personnages animés présents (leur mélangeur avance à chaque image)
+  // Les tabliers de l'équipe prennent la couleur de l'uniforme choisi au marché
+  const tabliers = new Set(); let couleurTablier = null;
+  const halosRares = new Set();   // halo et étoile des visiteurs rares (animés à chaque image)
+  const teindre = (o, hex) => o.traverse(m => { if (m.isMesh && m.material) { if (!m.userData.matPropre) { m.material = m.material.clone(); m.userData.matPropre = true; } m.material.color.setHex(hex); } });
+  function majUniforme(hex) { couleurTablier = hex; tabliers.forEach(t => teindre(t, hex)); }
   function perso(habit, cheveux, { tablier = false, peau = C.peau, pantalon = null } = {}) {
     const p = modele('personnage', { habit, cheveux, peau, tablier: 0x8A5226, ...(pantalon ? { pantalon } : {}) });
     if (p) {
       ombreContact(p);
-      const t = p.getObjectByName('tablier'); if (t) t.visible = tablier;
+      const t = p.getObjectByName('tablier'); if (t) { t.visible = tablier; if (tablier) { tabliers.add(t); if (couleurTablier != null) teindre(t, couleurTablier); } }
       const n = k => p.getObjectByName(k);
       // Personnage à squelette : une coiffure au hasard, et un mélangeur d'animations (mis à jour à chaque image)
       if (ANIMS.personnage?.length) {
@@ -982,6 +987,21 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
   guirlande(D.guirlande, V3(-5.9, 2.65, 7.0), V3(1.5, 2.65, 7.0), 16, .4);
   guirlande(D.guirlande, V3(-6.05, 3.2, 3.95), V3(1.5, 2.65, 7.0), 14, .45);
   guirlande(D.guirlande, V3(-6.05, 3.2, 3.95), V3(-5.9, 2.65, 7.0), 6, .2);
+  // Fanions de fête (jours d'événement du quartier) : deux mâts et des triangles de couleur qui ondulent
+  D.fanions = grp(scene); D.fanions.visible = false;
+  const COULEURS_FANIONS = [0xE8584F, 0xFFD34A, 0x4FA3E0, 0x7CC24A, 0xF28AB2, 0xF28A3A];
+  const geoFanion = new THREE.BufferGeometry().setFromPoints([V3(-.13, 0, 0), V3(.13, 0, 0), V3(0, -.3, 0)]);
+  function fanions(de, a2, n, creux) {
+    const pt = u => de.clone().lerp(a2, u).add(V3(0, -Math.sin(u * Math.PI) * creux, 0));
+    D.fanions.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(Array.from({ length: 25 }, (_, k) => pt(k / 24))), matFil));
+    for (let k = 1; k < n; k++) {
+      const f = new THREE.Mesh(geoFanion, new THREE.MeshBasicMaterial({ color: COULEURS_FANIONS[k % COULEURS_FANIONS.length], side: THREE.DoubleSide }));
+      f.position.copy(pt(k / n)); f.lookAt(f.position.clone().add(V3(0, 0, 1))); f.userData.fanion = true; D.fanions.add(f);
+    }
+  }
+  [[-7.6, 8.4], [4.4, 8.4]].forEach(([x, z]) => put(cyl(.045, .055, 3.6, 0xE9E1DA, 8), x, 1.8, z, D.fanions));
+  fanions(V3(-7.6, 3.55, 8.4), V3(4.4, 3.55, 8.4), 26, .55);
+  fanions(V3(-7.6, 3.2, 8.4), V3(4.4, 3.2, 8.4), 22, .35);
   // Les ampoules des suspensions brillent un peu plus fort (le halo les fait rayonner)
   [D.lampes, D.ampoule].forEach(g => g.traverse(o => { if (o.isMesh && o.material.isMeshBasicMaterial) o.material.color.multiplyScalar(2.4); }));
 
@@ -1605,7 +1625,16 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
       const parapluie = pleut(e) && Math.random() < .75 ? accessoire(corpsClient, 'parapluie') : null;
       const c = new Marcheur(put(corpsClient, en.x, 0, en.z), 1.7 + Math.random() * .5);
       c.habitue = hab; c.parapluie = parapluie;
-      if (rare) [600, 3200].forEach(t => setTimeout(() => { if (!c.fini) surHumeur(c.o.position.clone().add(new THREE.Vector3(0, 2, 0)), '✨'); }, t));
+      if (rare) {
+        [600, 3200].forEach(t => setTimeout(() => { if (!c.fini) surHumeur(c.o.position.clone().add(new THREE.Vector3(0, 2, 0)), '✨'); }, t));
+        // Un halo doré au sol et une étoile qui tourne au-dessus de la tête : on le repère tout de suite
+        const halo = new THREE.Mesh(new THREE.RingGeometry(.3, .42, 40), new THREE.MeshBasicMaterial({ color: 0xFFD34A, transparent: true, opacity: .8, side: THREE.DoubleSide, depthWrite: false }));
+        halo.rotation.x = -Math.PI / 2; halo.position.y = .03; c.o.add(halo);
+        const haut = (c.o.userData.forme?.tete || 1.6) + .62;
+        const etoile = new THREE.Mesh(new THREE.OctahedronGeometry(.1), new THREE.MeshBasicMaterial({ color: 0xFFE07A }));
+        etoile.position.y = haut; c.o.add(etoile);
+        halosRares.add({ halo, etoile, haut, c, t: Math.random() * 6 });
+      }
       // Un client sur dix vient avec son chien (un sur quatre quand il fait beau)
       if (Math.random() < (e.meteo === 'soleil' ? .25 : .1)) { c.chien = chienPour(); if (c.chien) c.chien.o.position.set(en.x + .5, 0, en.z); }
       c.o.rotation.y = Math.PI;
@@ -1636,6 +1665,8 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
           else if (m.profil.humeur && Math.random() < .45) surHumeur(tete(m), m.profil.humeur);
         } else if (repart) { m.profil.parti = true; m.profil.pense = 'Trop d’attente… je reviendrai un autre jour.'; surHumeur(tete(m), '😠'); }
         else surPop(tete(m), 'Plus de café ?!', true);
+        // Un visiteur rare reparti sans être servi n'a pas compté : il pourra repasser plus tard dans la journée
+        if (!sert && m.habitue?.rare && e.meta.visiteJour === e.jour) e.meta.visiteJour = 0;
       } });
       if (place) c.aller({ x: place.x, z: place.z + .9 }, { x: place.x, z: place.z, face: place.face, assis: true, attente: 3 + Math.random() * 3, fn: () => { place.libre = true; } });
       c.aller({ x: .65, z: 2.8 }, { x: en.x, z: en.z, fn: m => { m.fini = true; } });
@@ -1652,6 +1683,11 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     clients = nettoyer(clients); livreurs = nettoyer(livreurs);
 
     for (const p of animes) { if (!p.parent) { animes.delete(p); continue; } if (p.visible) p.userData.anim.mixer.update(dt); }   // les personnages animés
+    for (const h of halosRares) {   // les visiteurs rares : halo qui respire, étoile qui tourne et flotte
+      if (h.c.fini || !h.c.o.parent) { halosRares.delete(h); continue; }
+      h.t += dt; h.etoile.rotation.y += dt * 2.6; h.etoile.position.y = h.haut + Math.sin(h.t * 3) * .06;
+      h.halo.material.opacity = .5 + .3 * Math.sin(h.t * 4); h.halo.scale.setScalar(1 + .08 * Math.sin(h.t * 4));
+    }
     majChutes(dt); majConfettis(dt); majPigeons(dt); majVoitures(dt); majMeteo(dt, e); majConfort(dt, e); majCiel(dt, e); majCuisine(dt, e);
     machines.forEach(m => { const b = m.userData.bras; if (b && b.parent.visible) b.rotation.y = Math.sin(t * 2.6 * Math.max(.2, ab)) * 1.1; });
     if (innerWidth && innerHeight) { if (hauteQualite) composer.render(); else renderer.render(scene, cam); }
@@ -1690,6 +1726,9 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     // Guirlande : éteinte le matin, elle s'allume doucement en fin de journée
     matAmpoules.color.setHex(0xFFE2A0).multiplyScalar(.55 + 3.2 * sombre);
     D.guirlande.visible = !!etat && a(etat, 'terrasse');
+    // Fanions de fête au-dessus du trottoir les jours d'événement du quartier
+    D.fanions.visible = !!etat?.evtQuartier && etat.phase === 'service';
+    if (D.fanions.visible) D.fanions.children.forEach((f, k) => { if (f.userData.fanion) f.rotation.x = Math.sin(performance.now() / 420 + k) * .25; });
     // Rayons de soleil : surtout le matin et le midi, pas la nuit ni sous la pluie
     majRayons(nuit || averse ? 0 : Math.max(0, 1 - Math.max(0, h - .45) * 2.2));
   }
@@ -1773,5 +1812,5 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
     return toile;
   }
 
-  return { majDecor, image, livraison, projeter, ANCRES, pulse: i => pulsations.set(i, .35), redim, qualite, vignette, capture, grille, marcheurs: () => [...Marcheur.tous] };
+  return { majDecor, majUniforme, image, livraison, projeter, ANCRES, pulse: i => pulsations.set(i, .35), redim, qualite, vignette, capture, grille, marcheurs: () => [...Marcheur.tous] };
 }
