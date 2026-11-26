@@ -52,6 +52,8 @@ export const MURS = [
   { id: 'brique', nom: 'Briques apparentes', motif: 'brique', c1: '#B86A4B', c2: '#E8D8C8', plinthe: 0x4A2E1F, style: 'moderne', prix: 4000, rep: 3.5 },
   { id: 'boiserie', nom: 'Boiseries anciennes', motif: 'boiserie', c1: '#9A6A45', c2: '#B5835A', plinthe: 0x4A2E1F, style: 'retro', prix: 8000, rep: 3.8 },
   { id: 'jungle', nom: 'Papier peint jungle', motif: 'jungle', c1: '#2F4F3E', c2: '#6F9B6B', plinthe: 0x2F4F3E, style: 'nature', prix: 12000, rep: 4.2 },
+  // Exclusif : offert par mamie dans son courrier (n'apparaît qu'une fois reçu)
+  { id: 'mamie', nom: 'Papier peint de mamie', c1: '#F5DDB0', c2: '#EAC48C', plinthe: 0x8A5226, style: 'retro', prix: 0, exclusif: true },
 ];
 export const SOLS = [
   { id: 'parquet', nom: 'Parquet miel', motif: 'lames', c1: '#D7B089', c2: '#CFA67C', style: 'chaleureux', prix: 0 },
@@ -234,6 +236,9 @@ export const SUCCES = [
   { id: 'atelierMax', nom: 'Une perle rare', desc: 'Avoir un employé au niveau 5.' },
   { id: 'etage', nom: 'Deux étages de bonheur', desc: 'Ouvrir la salle à l’étage.' },
   { id: 'celeste', nom: 'La machine d’une vie', desc: 'Installer une Céleste Atelier.' },
+  { id: 'premierChapitre', nom: 'Une histoire commence', desc: 'Écouter le premier chapitre de l’histoire d’un habitué.' },
+  { id: 'lettresMamie', nom: 'Le secret de mamie', desc: 'Lire les 7 lettres de mamie.' },
+  { id: 'amiQuartier', nom: 'L’ami du quartier', desc: 'Connaître toute l’histoire des 4 habitués.' },
 ];
 
 // Récit minimal : un message de mamie aux grandes étapes
@@ -416,4 +421,88 @@ export const NOUVELLES_QUARTIER = [
   'Les élèves de l’école primaire ont repeint la fresque du préau. Bravo à eux !',
   'Un vélo jaune attend son propriétaire devant la pharmacie depuis lundi. Mystère.',
   'La chorale du quartier répète tous les mercredis. On l’entend jusqu’au carrefour.',
+];
+
+// =================== Niveaux ===================
+// Le niveau du café : l'expérience vient des clients servis (1 XP chacun) et de bonus (travaux, objectifs, succès, histoires…).
+// XP cumulée pour atteindre le niveau n : base × (n − 1)^expo. Chaque niveau rapporte une prime, et un coffre tous les 5 niveaux.
+export const NIVEAU_CAFE = { base: 40, expo: 1.8, max: 60, prime: 60, primeParNiveau: 40, coffre: 3 };
+export const XP = { travaux: 1 / 40, travauxMax: 400, objectif: 60, succes: 40, chapitre: 50, lettre: 25, journee: 20, poste: 8 };
+// Ce que chaque niveau débloque (les déco et travaux absents de cette liste sont libres dès le niveau 1)
+export const DEBLOCAGES = [
+  { niveau: 2, mur: 'sauge', travaux: 'tapis' },
+  { niveau: 3, sol: 'chene', travaux: 'ardoise' },
+  { niveau: 4, mur: 'terracotta', travaux: 'plantes' },
+  { niveau: 5, sol: 'tomettes', travaux: 'lampes' },
+  { niveau: 6, mur: 'rose', travaux: 'enseigne' },
+  { niveau: 7, sol: 'damier' },
+  { niveau: 8, travaux: 'jukebox' },
+  { niveau: 9, mur: 'bleu' },
+  { niveau: 10, sol: 'beton', travaux: 'fresque' },
+  { niveau: 12, mur: 'brique' },
+  { niveau: 14, sol: 'terrazzo', travaux: 'lustre' },
+  { niveau: 16, mur: 'boiserie' },
+  { niveau: 18, sol: 'mosaique' },
+  { niveau: 20, mur: 'jungle' },
+];
+// Les niveaux des postes (réserve, moulin, bar, salle) : chacun monte avec de l'argent, +2 % par niveau et +10 % tous les 10 niveaux.
+// Le niveau maximum d'un poste suit le niveau du café : départ + 2 par niveau du café.
+export const NIVEAUX_POSTES = { couts: [60, 90, 120, 100], croissance: 1.16, gain: .02, palier: 10, bonusPalier: .1, depart: 4, parNiveauCafe: 2, max: 50,
+  effets: ['de place dans la réserve', 'de vitesse au moulin', 'de tasses par heure au bar', 'de service en salle'] };
+
+// =================== Revenir le lendemain (jours réels) ===================
+// Le courrier de mamie : une lettre par jour réel où l'on joue, avec un petit cadeau. Rater un jour ne fait rien perdre :
+// la lettre suivante attend simplement. {cafe} est remplacé par le nom du café.
+// cadeau : argent (€), notoriete (+), mur (un mur exclusif offert), secret (bonus permanent)
+export const LETTRES = [
+  { titre: 'Ma première lettre', texte: "Ma petite, je t'écris de chez ta tante, où je me repose les jambes. On me dit que {cafe} rouvre ses volets chaque matin : ça me fait chaud au cœur. Je glisse un billet dans l'enveloppe. Ce n'est pas grand-chose, mais une caisse qui tinte, ça donne du courage.", cadeau: { argent: 300 } },
+  { titre: 'Le marché du mardi', texte: "Hier, au marché, j'ai parlé de toi à tout le monde. Au fromager, à la fleuriste, et même au monsieur des olives qui ne sourit jamais. Tu vas voir de nouvelles têtes cette semaine. Sers-les bien, ils parlent beaucoup.", cadeau: { notoriete: .12 } },
+  { titre: 'Le papier peint de ma jeunesse', texte: "J'ai retrouvé au grenier les rouleaux du papier peint qu'on avait posé en 1974, avec ton grand-père. Des petites fleurs couleur miel, tu te souviens ? Je te les envoie. Pose-les un soir si le cœur t'en dit (Journal, Le café, Déco) : il paraît que ça revient à la mode.", cadeau: { mur: 'mamie' } },
+  { titre: 'Les comptes', texte: "Ton oncle me dit que tu regardes tes comptes tous les soirs. C'est bien, c'est comme ça qu'on tient une maison. Voilà un petit coup de pouce pour la prochaine machine. Ne le dépense pas en chocolats.", cadeau: { argent: 600 } },
+  { titre: 'Une carte postale', texte: "Une carte postale du bord de mer : la mouette dessus, c'est moi qui l'ai choisie. Ici, le café est imbuvable. Je pense au tien tous les matins. J'ai écrit à la Gazette pour leur dire de passer te voir.", cadeau: { notoriete: .15 } },
+  { titre: 'Un coup de main', texte: "Je sais que les débuts sont durs, j'ai connu ça en 1968. On n'avait pas un sou et ton grand-père réparait la machine avec une épingle à cheveux. Prends ça, et paie-toi un bon repas avant de tout remettre dans le café.", cadeau: { argent: 1000 } },
+  { titre: 'Mon secret', texte: "Il est temps que je te dise mon secret. Ce n'est pas le grain, ni la machine. Chaque matin, je saluais chaque client par son prénom, même ceux que je ne connaissais pas encore : je leur en inventais un. Les gens reviennent là où on les attend. Maintenant, c'est ton café. Je suis fière de toi.", cadeau: { secret: true } },
+];
+// Le secret de mamie : les clients se sentent attendus
+export const SECRET_MAMIE = { clients: .05 };
+// Après les 7 lettres de mamie, le quartier écrit à son tour : un mot gentil et un pourboire collectif
+export const LETTRES_QUARTIER = [
+  { de: 'La fleuriste', texte: 'Merci pour les cafés offerts pendant l’inventaire. Voilà de quoi en offrir d’autres.' },
+  { de: 'Le club de pétanque', texte: 'Le club a fait une cagnotte pour son café préféré. Monsieur Bernard a insisté pour l’apporter lui-même.' },
+  { de: 'La bibliothécaire', texte: 'Le club de lecture se réunit maintenant chez vous. Voici notre participation au chauffage !' },
+  { de: 'Les voisins du 3e', texte: 'L’odeur du café nous réveille chaque matin. On ne s’en plaint pas : on vous remercie.' },
+  { de: 'L’école du quartier', texte: 'Les parents d’élèves ont adoré la kermesse avec vos chocolats chauds. Merci !' },
+];
+export const LETTRE_QUARTIER = { min: 150, part: .15 };   // le pourboire du quartier : une part de la recette moyenne d'une journée
+
+// Les histoires des habitués : 4 chapitres chacun. Un chapitre s'ouvre quand l'habitué est venu assez souvent,
+// et au plus un nouveau chapitre par habitué et par jour réel. Le dernier offre un cadeau permanent.
+// avis : des avis 5 ★ en plus ; argent : un pourboire
+export const AMITIE = { visites: [2, 6, 12, 20] };
+export const CADEAUX_HABITUES = { photo: { ambiance: .25 }, etudiants: { clients: .06 }, velos: { clients: .08 }, guide: { ambiance: .2, notoriete: .2 } };
+export const HISTOIRES_HABITUES = [
+  { id: 'bernard', nom: 'Monsieur Bernard', icone: '👴', qui: ['bernard'], cadeau: { id: 'photo', nom: 'La photo de 1987', effet: 'Accrochée au mur : la salle est plus chaleureuse (+ ambiance).' }, chapitres: [
+    { titre: 'Depuis 1987', texte: "« Vous savez, je suis venu ici pour la première fois en 1987. Avec Simone, ma femme. Votre grand-mère nous avait offert le café parce qu'on venait de se fiancer. Simone n'est plus là, mais moi, je reviens. Toujours à la même table, près de la fenêtre. »", argent: 40 },
+    { titre: 'Le club de pétanque', texte: "« J'ai parlé de votre café au club. Ils sont un peu bougons, mes copains, mais ils ont bon goût. Ils viendront samedi. Prévoyez des petits noirs bien serrés, et ne leur parlez pas de la finale de 2019. »", avis: 25 },
+    { titre: 'Les mots croisés', texte: "« Le matin, je fais les mots croisés de la Gazette ici. Chez moi, c'est trop calme. Ici, il y a le bruit des tasses, les gens qui discutent… Ça me tient compagnie. Huit lettres, “lieu où l'on se sent chez soi” ? Ah ! B-I-S-T-R-O-T… non, ça fait sept. »", argent: 80 },
+    { titre: 'La vieille photo', texte: "Monsieur Bernard pose un cadre sur le comptoir. Une photo jaunie : le café en 1987, et votre grand-mère, toute jeune, derrière le bar. « Je l'ai gardée trente ans dans un tiroir. Elle est mieux ici. Accrochez-la, s'il vous plaît. »" },
+  ] },
+  { id: 'ines', nom: 'Inès', icone: '🎓', qui: ['ines'], cadeau: { id: 'etudiants', nom: 'Le club des étudiants', effet: 'Les amis d’Inès révisent chez toi : +6 % de clients.' }, chapitres: [
+    { titre: 'La table du fond', texte: "« Je peux rester un peu ? Je révise mes partiels de droit, et à la bibliothèque, il y a un monsieur qui renifle toutes les trente secondes. Ici, ça sent bon et personne ne renifle. Enfin, presque personne. »", argent: 30 },
+    { titre: 'Le partiel raté', texte: "Inès arrive les yeux rouges. « J'ai raté mon partiel de droit civil. Huit sur vingt. » Tu lui sers un chocolat chaud, offert. Le soir, tu trouves un mot sous sa tasse : « Merci. Je n'abandonne pas. »", avis: 15 },
+    { titre: 'Seize sur vingt', texte: "« SEIZE ! J'ai eu seize au rattrapage ! » Inès saute partout dans la salle et renverse presque un cappuccino. « C'est grâce à votre table du fond, j'en suis sûre. Je vais le dire à toute ma promo. »", argent: 120 },
+    { titre: 'Le club des étudiants', texte: "« On a monté un club de révision, et on a voté : ce sera ici, tous les après-midi. On sera sages, promis. Enfin, on consommera beaucoup, surtout. » Une dizaine d'étudiants s'installent déjà avec leurs fiches." },
+  ] },
+  { id: 'livreurs', nom: 'Karim et Yanis', icone: '🚲', qui: ['karim', 'yanis'], cadeau: { id: 'velos', nom: 'Les Frères Pédale', effet: 'Karim et Yanis livrent tes cafés dans le quartier : +8 % de clients.' }, chapitres: [
+    { titre: 'Qui paie ?', texte: "« C'est lui qui paie. » « Non, c'est toi, j'ai payé hier. » « Hier, c'était le croissant, ça ne compte pas. » Karim et Yanis, cousins et livreurs à vélo, se disputent l'addition chaque matin depuis 2016. Ils finissent par laisser un pourboire chacun.", argent: 30 },
+    { titre: 'Le vélo volé', texte: "Yanis arrive à pied, furieux. « On m'a volé mon vélo devant la pharmacie ! » Karim lui tend les clés du sien : « Prends le mien, je ferai mes livraisons en courant. Ça me fera les mollets. »", avis: 15 },
+    { titre: 'Le grand projet', texte: "Ils étalent un plan sur la table. « On veut lancer notre service de livraison. Rien que nous deux, à vélo, dans le quartier. Et on se disait… si on commençait par livrer vos cafés aux bureaux d'à côté ? » Ils te regardent avec des yeux pleins d'espoir.", argent: 90 },
+    { titre: 'Les Frères Pédale', texte: "Deux vélos tout neufs, peints aux couleurs de {cafe}, attendent devant la vitrine. « Les Frères Pédale sont en service ! » Ils partent livrer leurs dix premiers cafés de la matinée. Les bureaux d'en face en redemandent déjà." },
+  ] },
+  { id: 'lefevre', nom: 'Madame Lefèvre', icone: '🖋️', qui: ['lefevre'], cadeau: { id: 'guide', nom: 'Recommandé par le guide', effet: 'L’article de Madame Lefèvre : + ambiance et + notoriété.' }, chapitres: [
+    { titre: 'Le carnet noir', texte: "Madame Lefèvre goûte son espresso en silence, puis écrit trois lignes dans un petit carnet noir. Elle referme le carnet d'un coup sec. « Ce n'est pas pour vous. C'est pour moi. » Elle laisse un pourboire exact au centime.", argent: 40 },
+    { titre: 'La première critique', texte: "« Je vais vous faire une confidence. Ma toute première critique, en 1979, c'était sur ce café. Votre grand-mère m'avait servi un espresso parfait, et j'avais écrit qu'il était “correct”. J'étais jeune et bête. Je ne l'ai jamais oublié. »", avis: 20 },
+    { titre: 'Un sourire', texte: "« Quel est votre secret ? » Tu lui montres ton grain, ta machine, ta façon de tasser. Elle écoute, sans rien noter cette fois. Puis, pour la première fois, Madame Lefèvre sourit. Ça ne dure qu'une seconde, mais tout le monde l'a vu.", argent: 100 },
+    { titre: 'L’article', texte: "La Gazette publie un article de Madame Lefèvre : « {cafe}, la renaissance d'une adresse. Le meilleur espresso du quartier, et je pèse mes mots. » Elle te tend le journal : « Cette fois, j'ai écrit “parfait”. Il était temps. »" },
+  ] },
 ];

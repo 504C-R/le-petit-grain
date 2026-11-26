@@ -18,6 +18,11 @@ try {
   if (d && d.version === 5) e = J.restaurer(d);
 } catch { e = J.nouvelEtat(); }
 if (e.jour > 3) { e.meta.tutoJour ??= true; e.meta.tutoSoir ??= true; }   // les parties déjà lancées sautent le tutoriel (il reste dans le carnet)
+// Le jour réel (AAAA-MM-JJ, heure locale) : courrier de mamie et chapitres des habitués, un par jour. En test : ?debug&jour=2026-12-01
+let jourForce = new URLSearchParams(location.search).has('debug') ? new URLSearchParams(location.search).get('jour') : null;
+const jourReel = () => { if (jourForce) return jourForce; const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+let auj = jourReel();
+J.initCourrier(e, auj);
 function sauver() { try { localStorage.setItem(CLE, JSON.stringify(e)); } catch { /* stockage indisponible : on joue sans sauvegarde */ } }
 
 // ---------- Plateforme (CrazyGames, itch.io, web) ----------
@@ -42,6 +47,14 @@ const scene = await creerScene(document.getElementById('scene'), {
   surHabitue: (h, pos) => {
     const p = J.servirHabitue(e, h.id);
     if (!p) return;
+    // Assez de visites, et pas encore de chapitre aujourd'hui : l'habitué raconte la suite de son histoire
+    const hist = J.chapitrePret(e, h.id, auj);
+    const libre = document.getElementById('papier').hidden && document.getElementById('bulle').hidden && document.getElementById('fete').hidden;
+    if (hist && libre && enJeu) {
+      ui.parole(pos, h.nom, 'J’ai quelque chose à vous raconter…');
+      setTimeout(() => ui.raconter(hist.id), 1400);
+      return;
+    }
     ui.parole(pos, h.nom, h.phrases[Math.floor(Math.random() * h.phrases.length)]);   // le pourboire va dans la caisse, sans s'afficher
   },
 });
@@ -49,6 +62,7 @@ const jeu = {
   get e() { return e; },
   get vitesse() { return vitesse; },
   get enJeu() { return enJeu; },
+  get auj() { return auj; },
   set vitesse(v) { vitesse = v; },
   sauver,
   plateforme,
@@ -63,11 +77,11 @@ const jeu = {
   exporter() { sauver(); return J.exporterSauvegarde(e); },
   importer(code) {
     const n = J.importerSauvegarde(code); if (!n) return false;
-    e = n; scene.majDecor(e); ui.fermer(); sauver(); return true;
+    e = n; J.initCourrier(e, auj); scene.majDecor(e); ui.fermer(); sauver(); return true;
   },
   nouvellePartie() {
     try { localStorage.removeItem(CLE); } catch { /* rien */ }
-    e = J.nouvelEtat(); scene.majDecor(e); ui.fermer(); sauver();
+    e = J.nouvelEtat(); J.initCourrier(e, auj); scene.majDecor(e); ui.fermer(); sauver();
   },
 };
 ui = creerUI({ jeu, scene });
@@ -147,9 +161,13 @@ function image(dt) {
   accVerif += dt;
   if (accVerif > 1) {
     accVerif = 0;
-    const obj = J.verifierObjectif(e); if (obj) { ui.objectifAtteint(obj); plateforme.joie(); }
-    J.verifierSucces(e).forEach(s => ui.celebrer({ genre: 'Nouveau succès', titre: s.nom, texte: s.desc }));
-    if (document.getElementById('bulle').hidden) { const h = J.verifierHistoire(e); if (h) { ui.bulle(h.texte, { titre: h.titre }); scene.majDecor(e); } }
+    auj = jourReel(); ui.majCourrier();   // minuit passé en jouant : la lettre du jour arrive
+    // Pendant une lecture (lettre, chapitre, Gazette), les fêtes attendent qu'on referme le papier
+    const lecture = !document.getElementById('papier').hidden;
+    const obj = lecture ? null : J.verifierObjectif(e); if (obj) { ui.objectifAtteint(obj); plateforme.joie(); }
+    if (!lecture) J.verifierSucces(e).forEach(s => ui.celebrer({ genre: 'Nouveau succès', titre: s.nom, texte: s.desc }));
+    if (!lecture) J.verifierNiveau(e).forEach(n => { ui.celebrerNiveau(n); plateforme.joie(); });
+    if (!lecture && document.getElementById('bulle').hidden) { const h = J.verifierHistoire(e); if (h) { ui.bulle(h.texte, { titre: h.titre }); scene.majDecor(e); } }
   }
   // Pour la 3D : le personnel présent apparaît à son poste (ces champs ne servent qu'au dessin)
   const k = J.momentIndex(e), pres = J.ouvert(e) ? e.equipe.filter(p => J.presentA(p, k) && !p.gerant) : [];
@@ -200,7 +218,9 @@ if (!params.has('debug') || params.has('accueil')) {
   document.getElementById('jouer').onclick = () => {
     if (!dejaJoue) J.reglerDifficulte(e, mode);
     if (nouveau) { e.meta.nomCafe = J.nettoyerNom(champ.value) || J.NOM_PAR_DEFAUT; scene.majDecor(e); sauver(); champ.blur(); }
-    acc.classList.add('part'); setTimeout(() => { acc.hidden = true; }, 450); sons.clic(); enJeu = true; plateforme.jeuDebut(); };
+    acc.classList.add('part'); setTimeout(() => { acc.hidden = true; }, 450); sons.clic(); enJeu = true; plateforme.jeuDebut();
+    if (J.courrierDispo(e, auj)) setTimeout(() => ui.toast('✉️ <b>Une lettre de mamie t’attend !</b> Touche l’enveloppe pour l’ouvrir.', 5500), 900);
+  };
 } else { enJeu = true; plateforme.jeuDebut(); }
 if (!window.PLATEFORME && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('sw.js').catch(() => { /* pas grave : le jeu marche sans */ });
@@ -208,5 +228,5 @@ if (!window.PLATEFORME && 'serviceWorker' in navigator && (location.protocol ===
 
 // Outils de test, seulement avec ?debug dans l'adresse
 if (new URLSearchParams(location.search).has('debug')) {
-  window.__n15x = { plateforme, scene, ui, get e() { return e; }, set e(v) { e = v; scene.majDecor(e); }, J, jeu, majDecor: () => scene.majDecor(e), pas: (n = 10, dt = .1) => { for (let k = 0; k < n; k++) image(dt); } };
+  window.__n15x = { plateforme, scene, ui, get e() { return e; }, set e(v) { e = v; scene.majDecor(e); }, J, jeu, changerJour: d => { jourForce = d; auj = jourReel(); ui.majCourrier(); }, majDecor: () => scene.majDecor(e), pas: (n = 10, dt = .1) => { for (let k = 0; k < n; k++) image(dt); } };
 }

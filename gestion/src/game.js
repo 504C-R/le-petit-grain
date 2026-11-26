@@ -8,6 +8,8 @@ import {
   CAPACITE, DEMANDE_BASE, RESERVE_KG, PERSONNEL, TRAITS, PRENOMS_EMPLOYES, MOIS, ENERGIE, PRETS, DECOUVERT, ARGENT_DEPART,
   JOURS_SEMAINE, AFFLUENCE_JOUR, NOMS_MOIS, SAISONS, VIENNOISERIES, NOTE, NOTORIETE, CONSOMMABLES,
   CARTE, VARIETE, DEUXIEME_TASSE, MARKETING, FIDELITE, DIFFICULTES, MEDAILLES, NOUVELLES_QUARTIER,
+  LETTRES, LETTRES_QUARTIER, LETTRE_QUARTIER, SECRET_MAMIE, AMITIE, CADEAUX_HABITUES, HISTOIRES_HABITUES,
+  NIVEAU_CAFE, XP, DEBLOCAGES, NIVEAUX_POSTES,
 } from './data.js';
 const CA = Object.fromEntries(CARTE.map(p => [p.id, p]));
 const MK = Object.fromEntries(MARKETING.map(m => [m.id, m]));
@@ -29,7 +31,8 @@ export const HEURES_MOMENT = MOMENTS.map(m => m.a - m.de);
 
 // ---------- État ----------
 export function nouvelleMeta() {
-  return { succes: [], histoire: [], tasses: 0, totalGagne: 0, reparations: 0, critiques: 0, habitues: {}, nomCafe: '', ville: 0, clientsTotal: 0 };
+  return { succes: [], histoire: [], tasses: 0, totalGagne: 0, reparations: 0, critiques: 0, habitues: {}, nomCafe: '', ville: 0, clientsTotal: 0,
+    courrier: null, amities: {}, cadeaux: [], secret: false, xpBonus: 0, niveau: 1 };
 }
 export const nouvelleJournee = () => ({ recettes: 0, depenses: 0, charges: 0, tasses: 0, clients: 0, perdus: 0, satisfaction: 0,
   viennoiseries: 0, invendus: 0, produits: {}, remises: 0,
@@ -98,6 +101,9 @@ export function restaurer(d) {
   e.fidelite = Object.assign({ active: false, membres: 0 }, d.fidelite || {});
   e.campagnes = Array.isArray(d.campagnes) ? d.campagnes : [];
   if (!d.carte) nouveauxProduits(e);   // les anciennes parties gardent leurs cappuccinos et leurs croissants
+  // Parties d'avant les niveaux : un peu d'XP pour les travaux déjà faits, et on part du niveau atteint (sans pluie de primes)
+  if (d.meta?.xpBonus == null) e.meta.xpBonus = e.achats.length * 30;
+  if (d.meta?.niveau == null) e.meta.niveau = niveauCafe(e);
   return e;
 }
 
@@ -111,14 +117,59 @@ export const tierMoulin = e => MO[e.moulin].visuel === 'torrefacteur' ? 2 : e.mo
 export const aBuse = e => a(e, 'buse') || e.machines.includes('vapore');
 export const ouvert = e => e.phase === 'service';
 export const places = e => 4 + 2 * ['table3', 'table4', 'table5', 'table6'].filter(t => a(e, t)).length + (a(e, 'terrasse') ? 4 : 0) + (a(e, 'etage') ? 6 : 0);
-export const bonusDeco = e => (a(e, 'peinture') ? .2 : 0) + (a(e, 'plantes') ? .15 : 0) + (a(e, 'lampes') ? .15 : 0) + (a(e, 'enseigne') ? .25 : 0) + (a(e, 'ardoise') ? .1 : 0) + (a(e, 'fresque') ? .2 : 0)
+export const bonusDeco = e => bonusCadeaux(e, 'ambiance') + (a(e, 'peinture') ? .2 : 0) + (a(e, 'plantes') ? .15 : 0) + (a(e, 'lampes') ? .15 : 0) + (a(e, 'enseigne') ? .25 : 0) + (a(e, 'ardoise') ? .1 : 0) + (a(e, 'fresque') ? .2 : 0)
   + (a(e, 'tapis') ? .1 : 0) + (a(e, 'cheminee') ? .1 : 0) + (a(e, 'lustre') ? .15 : 0);
 export const villeInfo = e => INFOS_VILLES[VILLES[e.meta.ville % VILLES.length]] || INFOS_VILLES.Lyon;
 export const nomVille = e => VILLES[e.meta.ville % VILLES.length];
 export const menuLait = e => aBuse(e) && e.lait > 0;
 export const cafemaxOuvert = e => e.meta.histoire.includes('cafemax') || !!villeInfo(e).cafemax;
 export const prixTravaux = (e, t) => t.prix;
-export const disponible = (e, t) => !a(e, t.id) && (t.req || []).every(r => a(e, r));
+export const prerequisOk = (e, t) => !a(e, t.id) && (t.req || []).every(r => a(e, r));
+export const disponible = (e, t) => prerequisOk(e, t) && niveauCafe(e) >= niveauRequis('travaux', t.id);
+
+// ---------- Niveaux : le niveau du café (XP) et les niveaux des postes ----------
+export const xpPour = n => Math.round(NIVEAU_CAFE.base * Math.pow(Math.max(0, n - 1), NIVEAU_CAFE.expo));
+export const xpTotal = e => Math.floor(e.meta.clientsTotal || 0) + (e.meta.xpBonus || 0);
+export function niveauCafe(e) {
+  const x = xpTotal(e); let n = 1;
+  while (n < NIVEAU_CAFE.max && x >= xpPour(n + 1)) n++;
+  return n;
+}
+export function progresNiveau(e) {
+  const n = niveauCafe(e), de = xpPour(n), a2 = xpPour(n + 1), x = xpTotal(e);
+  return { niveau: n, xp: x - de, besoin: a2 - de, part: n >= NIVEAU_CAFE.max ? 1 : Math.min(1, (x - de) / (a2 - de)) };
+}
+export const gagnerXp = (e, n) => { if (n > 0) e.meta.xpBonus = (e.meta.xpBonus || 0) + Math.round(n); };
+const REQ_NIVEAU = {};
+DEBLOCAGES.forEach(d => ['mur', 'sol', 'travaux'].forEach(k => { if (d[k]) REQ_NIVEAU[k + ':' + d[k]] = d.niveau; }));
+export const niveauRequis = (type, id) => REQ_NIVEAU[type + ':' + id] || 1;
+export const deblocagesNiveau = n => DEBLOCAGES.find(d => d.niveau === n) || null;
+export const prochainDeblocage = e => DEBLOCAGES.find(d => d.niveau > niveauCafe(e)) || null;
+export const primeNiveau = n => (NIVEAU_CAFE.prime + NIVEAU_CAFE.primeParNiveau * n) * (n % 5 === 0 ? NIVEAU_CAFE.coffre : 1);
+// Les niveaux gagnés depuis la dernière vérification : chacun paie sa prime (un coffre tous les 5 niveaux)
+export function verifierNiveau(e) {
+  const n = niveauCafe(e), nouveaux = [];
+  if (e.meta.niveau == null) { e.meta.niveau = n; return nouveaux; }
+  while (e.meta.niveau < n) {
+    const k = ++e.meta.niveau, p = primeNiveau(k);
+    encaisserPrime(e, p);
+    nouveaux.push({ niveau: k, prime: p, debloque: deblocagesNiveau(k), coffre: k % 5 === 0, nivMaxPoste: nivMaxPoste(e) });
+  }
+  return nouveaux;
+}
+export const nivMaxPoste = e => Math.min(NIVEAUX_POSTES.max, NIVEAUX_POSTES.depart + NIVEAUX_POSTES.parNiveauCafe * niveauCafe(e));
+export const multPoste = (e, i) => {
+  const n = e.st[i]?.niv || 1;
+  return (1 + NIVEAUX_POSTES.gain * (n - 1)) * Math.pow(1 + NIVEAUX_POSTES.bonusPalier, Math.floor(n / NIVEAUX_POSTES.palier));
+};
+export const coutPoste = (e, i) => Math.round(NIVEAUX_POSTES.couts[i] * Math.pow(NIVEAUX_POSTES.croissance, (e.st[i]?.niv || 1) - 1));
+export function ameliorerPoste(e, i) {
+  const st = e.st[i]; if (!st) return 'indispo';
+  if (st.niv >= nivMaxPoste(e)) return 'max';
+  const c = coutPoste(e, i); if (e.argent < c) return 'argent';
+  depenser(e, c, 'investissements'); st.niv++; gagnerXp(e, XP.poste);
+  return 'ok';
+}
 const depenser = (e, x, poste = 'achats') => { e.argent -= x; e.journee.depenses += x; e.mois[poste] = (e.mois[poste] || 0) + x; };
 
 // ---------- Calendrier ----------
@@ -139,6 +190,7 @@ export function choisirDeco(e, type, id) {
   const x = (type === 'mur' ? MU : SO)[id];
   if (!x) return 'indispo';
   if (!a(e, 'peinture')) return 'peinture';
+  if (niveauCafe(e) < niveauRequis(type, id)) return 'niveau';
   if (e.rep < (x.rep || 0)) return 'verrou';
   if (ouvert(e)) return 'ferme';
   if (e.deco[type] === id) return 'deja';
@@ -230,9 +282,10 @@ export function capacites(e, k = momentIndex(e)) {
   let boissons = 0;
   for (let i = 0; i < Math.min(baristas.length, caps.length); i++) boissons += Math.min(baristas[i], caps[i]);
   if (salle <= 0) boissons *= PERSONNEL.sansSalle;
-  const moulin = e.st[1].panne ? 0 : MO[e.moulin].vitesse * CAPACITE.moulin;
+  boissons *= multPoste(e, 2);
+  const moulin = e.st[1].panne ? 0 : MO[e.moulin].vitesse * CAPACITE.moulin * multPoste(e, 1);
   const placesH = places(e) * CAPACITE.placesParHeure / (1 - partEmporter(e));
-  return { boissons, moulin, salle: salle > 0 ? salle : Infinity, places: placesH, cuisine, baristas: baristas.length, enSalle: presents.filter(p => p.role === 'salle').length, presents: presents.length };
+  return { boissons, moulin, salle: salle > 0 ? salle * multPoste(e, 3) : Infinity, places: placesH, cuisine, baristas: baristas.length, enSalle: presents.filter(p => p.role === 'salle').length, presents: presents.length };
 }
 
 // ---------- Qualité, prix, demande ----------
@@ -282,7 +335,7 @@ export function courbeHeure(h) {
   return COURBE_HEURE[COURBE_HEURE.length - 1][1];
 }
 export const attrait = e => (a(e, 'enseigne') ? 1.12 : 1) * (a(e, 'ardoise') ? 1.04 : 1) * (a(e, 'emporter') ? 1.1 : 1) * (a(e, 'velo') ? 1.12 : 1)
-  * (a(e, 'etage') ? 1.2 : 1) * (a(e, 'jukebox') ? 1.05 : 1) * (harmonie(e) ? 1.04 : 1);
+  * (a(e, 'etage') ? 1.2 : 1) * (a(e, 'jukebox') ? 1.05 : 1) * (harmonie(e) ? 1.04 : 1) * (1 + bonusCadeaux(e, 'clients'));
 // ---------- Météo, saison et boisson du jour ----------
 export const meteoDuJour = e => MET[e.meteo] || MET.nuages;
 export function multMeteo(e) {
@@ -463,7 +516,7 @@ export function cibleReputation(e) {
 }
 
 // ---------- Réserve et commandes (en kilos) ----------
-export const capaciteReserve = e => (RESERVE_KG.base + (a(e, 'palette') ? RESERVE_KG.palette : 0) + (a(e, 'arriere') ? RESERVE_KG.arriere : 0) + (a(e, 'entrepot') ? RESERVE_KG.entrepot : 0)) * DOSES_SAC;
+export const capaciteReserve = e => Math.round((RESERVE_KG.base + (a(e, 'palette') ? RESERVE_KG.palette : 0) + (a(e, 'arriere') ? RESERVE_KG.arriere : 0) + (a(e, 'entrepot') ? RESERVE_KG.entrepot : 0)) * multPoste(e, 0)) * DOSES_SAC;
 const grainsCommandes = e => e.commandes.concat(e.livraisonsMatin).filter(c => c.grain !== 'lait').reduce((x, c) => x + c.sacs * DOSES_SAC, 0);
 export const totalStock = e => Object.values(e.stock).reduce((x, y) => x + y, 0) + grainsCommandes(e);
 export const prixKg = (e, g) => G[g].prixSac * F[e.fournisseur].prixMult;
@@ -523,7 +576,7 @@ export function acheter(e, id) {
   if (ouvert(e)) return 'ferme';
   const p = prixTravaux(e, t);
   if (e.argent < p) return 'argent';
-  depenser(e, p, 'investissements'); e.achats.push(id); nouveauxProduits(e); return 'ok';
+  depenser(e, p, 'investissements'); e.achats.push(id); nouveauxProduits(e); gagnerXp(e, Math.min(XP.travauxMax, p * XP.travaux)); return 'ok';
 }
 export function acheterMachine(e, poste, id) {
   const m = M[id];
@@ -533,7 +586,8 @@ export function acheterMachine(e, poste, id) {
   if (e.machines[poste] === id) return 'deja';
   const reprise = e.machines[poste] ? M[e.machines[poste]].prix * .25 : 0;
   if (e.argent + reprise < m.prix) return 'argent';
-  depenser(e, m.prix - reprise, 'investissements'); e.machines[poste] = id; e.calcaire[poste] = 0; nouveauxProduits(e); return 'ok';
+  depenser(e, m.prix - reprise, 'investissements'); e.machines[poste] = id; e.calcaire[poste] = 0; nouveauxProduits(e);
+  gagnerXp(e, Math.min(XP.travauxMax, m.prix * XP.travaux)); return 'ok';
 }
 export function acheterMoulin(e, id) {
   const m = MO[id];
@@ -834,6 +888,7 @@ export function tirerDefi(e, rnd = Math.random) {
 // ---------- La journée et la nuit ----------
 function fermer(e, rnd = Math.random) {
   const arrivees = [];
+  gagnerXp(e, XP.journee);
   const c = chargesJour(e);
   e.argent -= c.total; e.journee.charges = c.total; e.mois.salaires += c.salaires; e.mois.energie += c.energie; e.mois.interets += c.agios;
   e.journee.invendus = e.viennoiseries.stock; e.viennoiseries.stock = 0;
@@ -989,10 +1044,13 @@ const TESTS_SUCCES = {
   quartier: e => HABITUES.every(h => (e.meta.habitues[h.id] || 0) > 0),
   geisha: e => e.maison === 'geisha' && e.stock.geisha > 0, atelier5: e => e.stats.formations >= 5,
   atelierMax: e => e.equipe.some(p => !p.gerant && p.comp >= 5), etage: e => a(e, 'etage'), celeste: e => e.machines.includes('celeste'),
+  amiQuartier: e => HISTOIRES_HABITUES.every(h => amitie(e, h.id).lus >= h.chapitres.length),
+  lettresMamie: e => (e.meta.courrier?.lus || 0) >= LETTRES.length,
+  premierChapitre: e => Object.values(e.meta.amities || {}).some(x => x.lus >= 1),
 };
 export function verifierSucces(e) {
   const nouveaux = SUCCES.filter(s => !e.meta.succes.includes(s.id) && TESTS_SUCCES[s.id]?.(e));
-  nouveaux.forEach(s => e.meta.succes.push(s.id));
+  nouveaux.forEach(s => { e.meta.succes.push(s.id); gagnerXp(e, XP.succes); });
   return nouveaux;
 }
 const TESTS_HISTOIRE = {
@@ -1020,6 +1078,90 @@ export function servirHabitue(e, id) {
   return pourboire;
 }
 
+// ---------- Revenir le lendemain : le courrier de mamie et les histoires des habitués ----------
+// Le jour réel (« AAAA-MM-JJ ») est fourni par main.js : la logique ne lit jamais l'horloge, et les tests peuvent changer de jour.
+// Rien ne se perd si l'on ne vient pas un jour : la lettre et le chapitre suivants attendent, simplement.
+const avecNomCafe = (e, t) => String(t).replaceAll('{cafe}', nomCafe(e));
+export function bonusCadeaux(e, champ) {
+  const m = e.meta;
+  return (m.cadeaux || []).reduce((s, id) => s + (CADEAUX_HABITUES[id]?.[champ] || 0), 0) + (champ === 'clients' && m.secret ? SECRET_MAMIE.clients : 0);
+}
+function ajouterAvis(e, n) { e.rep = (e.rep * e.nbAvis + 4.6 * n) / (e.nbAvis + n); e.nbAvis += n; }
+function ajouterNotoriete(e, x) { e.notoriete = Math.min(NOTORIETE.max, e.notoriete + x); }
+const pctNotoriete = x => Math.round(x / NOTORIETE.max * 100);
+// Une nouvelle partie n'a pas de lettre le premier jour (mamie écrit « demain ») ; une partie déjà lancée en reçoit une tout de suite.
+export function initCourrier(e, auj) {
+  if (e.meta.courrier) return;
+  e.meta.courrier = { dernier: e.jour > 1 || e.meta.tasses > 0 ? '' : auj, lus: 0 };
+}
+export const courrierDispo = (e, auj) => !!e.meta.courrier && e.meta.courrier.dernier !== auj;
+export const pourboireQuartier = e => {
+  const j = e.bilans.slice(-7), moy = j.length ? j.reduce((s, b) => s + b.recettes, 0) / j.length : 0;
+  return Math.max(LETTRE_QUARTIER.min, Math.round(moy * LETTRE_QUARTIER.part / 10) * 10);
+};
+export function prochaineLettre(e) {
+  const n = e.meta.courrier?.lus || 0;
+  if (n < LETTRES.length) return { ...LETTRES[n], de: 'Mamie Odette', numero: n + 1, total: LETTRES.length };
+  const q = LETTRES_QUARTIER[(n - LETTRES.length) % LETTRES_QUARTIER.length];
+  return { titre: 'Un mot du quartier', texte: q.texte, de: q.de, cadeau: { argent: pourboireQuartier(e) } };
+}
+export function ouvrirCourrier(e, auj) {
+  if (!courrierDispo(e, auj)) return null;
+  const l = prochaineLettre(e), c = l.cadeau, gains = [];
+  if (c.argent) { encaisserPrime(e, c.argent); gains.push(`+${c.argent} €`); }
+  if (c.notoriete) { ajouterNotoriete(e, c.notoriete); gains.push(`Notoriété +${pctNotoriete(c.notoriete)} %`); }
+  if (c.mur && !e.deco.vus.includes(c.mur)) { e.deco.vus.push(c.mur); gains.push(`Nouveau mur : ${MU[c.mur].nom}`); }
+  if (c.secret) { e.meta.secret = true; gains.push(`Le secret de mamie : +${Math.round(SECRET_MAMIE.clients * 100)} % de clients, pour toujours`); }
+  e.meta.courrier.dernier = auj; e.meta.courrier.lus++; gagnerXp(e, XP.lettre);
+  return { ...l, texte: avecNomCafe(e, l.texte), gains };
+}
+
+export const histoireDe = idHabitue => HISTOIRES_HABITUES.find(h => h.qui.includes(idHabitue)) || null;
+export const visitesHistoire = (e, h) => h.qui.reduce((s, id) => s + (e.meta.habitues[id] || 0), 0);
+export const amitie = (e, id) => e.meta.amities?.[id] || { lus: 0, jour: '' };
+// pret : un chapitre attend d'être lu ; demain : l'habitué est venu assez souvent, mais il a déjà raconté un chapitre aujourd'hui
+export function etatHistoire(e, h, auj) {
+  const am = amitie(e, h.id), lus = am.lus, visites = visitesHistoire(e, h);
+  if (lus >= h.chapitres.length) return { lus, fini: true, visites };
+  const seuil = AMITIE.visites[lus], assez = visites >= seuil, dejaAujourdhui = am.jour === auj;
+  return { lus, fini: false, visites, seuil, pret: assez && !dejaAujourdhui, demain: dejaAujourdhui };
+}
+export function chapitrePret(e, idHabitue, auj) {
+  const h = histoireDe(idHabitue);
+  return h && etatHistoire(e, h, auj).pret ? h : null;
+}
+export function lireChapitre(e, idHistoire, auj) {
+  const h = HISTOIRES_HABITUES.find(x => x.id === idHistoire);
+  if (!h || !etatHistoire(e, h, auj).pret) return null;
+  const am = { ...amitie(e, h.id) }, c = h.chapitres[am.lus], gains = [];
+  if (c.argent) { encaisserPrime(e, c.argent); gains.push(`Pourboire : +${c.argent} €`); }
+  if (c.avis) { ajouterAvis(e, c.avis); gains.push(`+${c.avis} avis enthousiastes`); }
+  am.lus++; am.jour = auj; gagnerXp(e, XP.chapitre);
+  e.meta.amities = { ...(e.meta.amities || {}), [h.id]: am };
+  const final = am.lus >= h.chapitres.length;
+  if (final && !e.meta.cadeaux.includes(h.cadeau.id)) {
+    e.meta.cadeaux.push(h.cadeau.id);
+    if (CADEAUX_HABITUES[h.cadeau.id]?.notoriete) ajouterNotoriete(e, CADEAUX_HABITUES[h.cadeau.id].notoriete);
+    gains.push(`${h.cadeau.nom} : ${h.cadeau.effet}`);
+  }
+  return { histoire: h, numero: am.lus, total: h.chapitres.length, titre: c.titre, texte: avecNomCafe(e, c.texte), gains, final };
+}
+// Ce qui attend le joueur à sa prochaine visite (affiché le soir, pour donner envie de revenir)
+export function aSuivre(e, auj) {
+  const l = [];
+  const c = e.meta.courrier;
+  if (c && c.dernier === auj) l.push({ icone: '✉️', texte: c.lus < LETTRES.length ? 'Demain matin, une nouvelle lettre de mamie t’attend.' : 'Demain, le quartier t’écrit un petit mot.' });
+  else if (c) l.push({ icone: '✉️', texte: 'Une lettre de mamie t’attend déjà : touche l’enveloppe.' });
+  for (const h of HISTOIRES_HABITUES) {
+    const s = etatHistoire(e, h, auj);
+    if (s.fini || !habituesDisponibles(e).some(x => h.qui.includes(x.id))) continue;
+    if (s.demain) l.push({ icone: h.icone, texte: `${h.nom} aura la suite de son histoire demain (chapitre ${s.lus + 1}/${h.chapitres.length}).` });
+    else if (s.pret) l.push({ icone: h.icone, texte: `${h.nom} a quelque chose à te raconter : sers-le bien !` });
+    else if (s.lus > 0) l.push({ icone: h.icone, texte: `${h.nom} : encore ${s.seuil - s.visites} visite${s.seuil - s.visites > 1 ? 's' : ''} avant le chapitre ${s.lus + 1}.` });
+  }
+  return l.slice(0, 4);
+}
+
 // ---------- Objectifs de mamie ----------
 const TESTS_OBJECTIFS = {
   journal: e => e.stats.nuits >= 1, commande: e => e.stats.commandes >= 1 || !!e.abonnement.grain,
@@ -1035,6 +1177,6 @@ export const primeObjectif = (e, o) => o.prime;
 export function verifierObjectif(e) {
   const o = objectifActuel(e);
   if (!o || !TESTS_OBJECTIFS[o.id]?.(e)) return null;
-  encaisserPrime(e, o.prime); e.objectif++;
+  encaisserPrime(e, o.prime); e.objectif++; gagnerXp(e, XP.objectif);
   return { ...o, prime: o.prime };
 }

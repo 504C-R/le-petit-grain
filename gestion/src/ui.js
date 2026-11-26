@@ -2,7 +2,7 @@
 import * as J from './game.js';
 import { sons, regleSon, regleMusique } from './sons.js';
 import { STATIONS, GRAINS, G, TRAVAUX, T, SUCCES, HISTOIRE, MOTS_TRAVAUX, DOSES_SAC, LAIT, MOMENTS, TARIFS, MURS, SOLS, STYLES, FORMULES,
-  PERSONNEL, ROLES, PRETS, MOIS, DECOUVERT, VIENNOISERIES, CARTE, MARKETING, FIDELITE } from './data.js';
+  PERSONNEL, ROLES, PRETS, MOIS, DECOUVERT, VIENNOISERIES, CARTE, MARKETING, FIDELITE, HISTOIRES_HABITUES, HABITUES, LETTRES, NIVEAUX_POSTES, DEBLOCAGES } from './data.js';
 const heureTexte = h => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.floor((h % 1) * 60)).padStart(2, '0')}`;
 
 export function fmt(n) {
@@ -64,7 +64,52 @@ export function creerUI({ jeu, scene }) {
   // ---------- Le papier : la Gazette du quartier et le bilan de l'année, mis en page comme un journal ----------
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   function ouvrirPapier(html) { $('papier-contenu').innerHTML = html; $('papier').hidden = false; $('papier').scrollTop = 0; sons.bulle(); }
-  $('papier-fermer').onclick = () => { $('papier').hidden = true; sons.clic(); };
+  $('papier-fermer').onclick = () => {
+    $('papier').hidden = true; sons.clic();
+    if (vitesseAvantLecture !== null) { if (jeu.vitesse === 0) { jeu.vitesse = vitesseAvantLecture || 1; majVitesse(); } vitesseAvantLecture = null; }
+  };
+  // ---------- Revenir le lendemain : le courrier de mamie et les histoires des habitués ----------
+  // On lit tranquille : le jeu se met en pause le temps de la lettre ou du chapitre
+  let vitesseAvantLecture = null;
+  const pauserPourLire = () => { if (vitesseAvantLecture === null) { vitesseAvantLecture = jeu.vitesse; jeu.vitesse = 0; majVitesse(); } };
+  const coeurs = (n, total) => `<span class="ch-coeurs">${Array.from({ length: total }, (_, k) => `<i class="${k < n ? 'plein' : ''}">♥</i>`).join('')}</span>`;
+  const cadeaux = gains => gains?.length ? `<div class="lt-cadeaux">${gains.map(g => `<span>🎁 ${esc(g)}</span>`).join('')}</div>` : '';
+  function majCourrier() { $('b-courrier').hidden = !J.courrierDispo(E(), jeu.auj); }
+  function afficherLettre(l, gains = []) {
+    pauserPourLire();
+    const mamie = l.de === 'Mamie Odette';
+    ouvrirPapier(`<div class="lettre"><div class="lt-tete"><span>${mamie ? `Une lettre de mamie · ${l.numero}/${l.total}` : `De la part de : ${esc(l.de)}`}</span><h2>${esc(l.titre)}</h2></div>
+      <p>${esc(l.texte)}</p>${mamie ? '<p class="lt-signe">Ta mamie qui t’embrasse</p>' : ''}${cadeaux(gains)}</div>`);
+  }
+  function ouvrirCourrier() {
+    const l = J.ouvrirCourrier(E(), jeu.auj); if (!l) return;
+    majCourrier(); jeu.sauver(); sons.succes();
+    afficherLettre(l, l.gains);
+    if (l.gains.some(g => g.startsWith('Nouveau mur'))) scene.majDecor(E());
+  }
+  $('b-courrier').onclick = ouvrirCourrier;
+  function afficherChapitre(h, n, titre, texte, gains, relu) {
+    pauserPourLire();
+    const final = n >= h.chapitres.length;
+    ouvrirPapier(`<div class="chapitre"><div class="ch-tete"><span class="ch-ico">${h.icone}</span><div><small>L’histoire de ${esc(h.nom)} · chapitre ${n}/${h.chapitres.length}</small><h2>${esc(titre)}</h2>${coeurs(n, h.chapitres.length)}</div></div>
+      <p>${esc(texte)}</p>${cadeaux(gains)}${relu ? '' : `<p class="ch-suite">${final ? 'Fin de l’histoire. Merci de l’avoir écoutée jusqu’au bout.' : 'La suite… à ta prochaine visite, demain.'}</p>`}</div>`);
+  }
+  // Un habitué bien servi raconte le chapitre suivant de son histoire
+  function raconter(idHistoire) {
+    const c = J.lireChapitre(E(), idHistoire, jeu.auj); if (!c) return false;
+    jeu.sauver(); sons.succes();
+    afficherChapitre(c.histoire, c.numero, c.titre, c.texte, c.gains, false);
+    return true;
+  }
+  function relireChapitre(idHistoire, k) {
+    const h = HISTOIRES_HABITUES.find(x => x.id === idHistoire), c = h?.chapitres[k]; if (!c) return;
+    afficherChapitre(h, k + 1, c.titre, c.texte.replaceAll('{cafe}', J.nomCafe(E())), [], true);
+  }
+  // Ce qui attend à la prochaine visite : affiché dans le bilan du soir
+  function blocASuivre(e) {
+    const l = J.aSuivre(e, jeu.auj);
+    return l.length ? `<div class="a-suivre"><h4>À ta prochaine visite</h4>${l.map(x => `<div><span>${x.icone}</span><span>${esc(x.texte)}</span></div>`).join('')}</div>` : '';
+  }
   function afficherGazette(g) {
     if (!g) return;
     ouvrirPapier(`<div class="gz-tete"><span>N° ${g.numero} · ${esc(g.date)}</span><h2>La Gazette du quartier</h2><span>Le journal de ceux qui aiment leur rue</span></div>
@@ -154,7 +199,35 @@ export function creerUI({ jeu, scene }) {
     $('f-up').innerHTML = i === 0 ? 'Commander<small>réserve</small>' : 'Équipe<small>planning</small>';
     $('f-mgr').innerHTML = i === 3 ? 'Travaux<small>tables, terrasse</small>' : i === 0 ? 'Bilan<small>du jour</small>' : 'Catalogue<small>matériel</small>';
     $('f-up').disabled = false; $('f-mgr').disabled = false;
+    majPoste(e, i);
   }
+  // ---------- Niveaux des postes : on les monte à tout moment, avec de l'argent ----------
+  function majPoste(e, i) {
+    const st = e.st[i], max = J.nivMaxPoste(e), c = J.coutPoste(e, i), m = J.multPoste(e, i);
+    const avantPalier = NIVEAUX_POSTES.palier - (st.niv % NIVEAUX_POSTES.palier);
+    const crans = Array.from({ length: NIVEAUX_POSTES.palier }, (_, k) => `<i class="${k < st.niv % NIVEAUX_POSTES.palier ? 'plein' : ''}"></i>`).join('');
+    $('f-poste').innerHTML = `<div class="pn-tete"><span class="pn-niv">niv ${st.niv}</span><div><b>+${Math.round((m - 1) * 100)} % ${NIVEAUX_POSTES.effets[i]}</b>
+        <small>Palier dans ${avantPalier} niveau${avantPalier > 1 ? 'x' : ''} : +${Math.round(NIVEAUX_POSTES.bonusPalier * 100)} % en plus</small><span class="pn-crans">${crans}</span></div></div>`
+      + (st.niv >= max ? `<p class="legende">Niveau maximum pour l’instant (${max}). Il monte de 2 à chaque niveau du café.</p>`
+        : `<button class="btn vert pn-btn${e.argent < c ? ' off' : ''}" id="f-ameliorer">Améliorer → niv ${st.niv + 1}<small>${fmt(c)} · +${Math.round(NIVEAUX_POSTES.gain * 100)} %</small></button>`);
+    const b = $('f-ameliorer');
+    if (b) b.onclick = () => {
+      const r = J.ameliorerPoste(E(), i);
+      if (r === 'ok') { sons.achat(); pop(scene.ANCRES[i], `niv ${E().st[i].niv} !`); jeu.sauver(); if (E().st[i].niv % NIVEAUX_POSTES.palier === 0) celebrer({ genre: 'Palier atteint', titre: `${STATIONS[i].court} niveau ${E().st[i].niv}`, texte: `+${Math.round(NIVEAUX_POSTES.bonusPalier * 100)} % en plus, d’un coup !` }); }
+      else if (r === 'argent') toast("Pas encore assez d'argent.");
+      majFiche();
+    };
+  }
+  // ---------- Niveau du café : la barre d'XP de l'en-tête, et la fête à chaque niveau ----------
+  const nomDeblocage = d => [d.mur && `mur « ${J.CATALOGUE_MURS[d.mur].nom} »`, d.sol && `sol « ${J.CATALOGUE_SOLS[d.sol].nom} »`, d.travaux && T[d.travaux].nom].filter(Boolean).join(', ');
+  function celebrerNiveau(n) {
+    const deb = n.debloque ? `Débloqué : ${nomDeblocage(n.debloque)}. ` : '';
+    celebrer({ genre: n.coffre ? 'Niveau supérieur · coffre !' : 'Niveau supérieur', titre: `Niveau ${n.niveau}`, texte: `${deb}Tes postes peuvent monter jusqu’au niveau ${n.nivMaxPoste}.`, prime: n.prime });
+  }
+  $('niveau-cafe').onclick = () => {
+    const p = J.progresNiveau(E()), d = J.prochainDeblocage(E());
+    toast(`⭐ <b>Niveau ${p.niveau}</b> · ${Math.round(p.xp)} / ${p.besoin} XP. Chaque client servi rapporte 1 XP, les travaux, objectifs et histoires bien plus.${d ? ` Au niveau ${d.niveau} : ${nomDeblocage(d)}.` : ''}`, 6500);
+  };
 
   const barres = q => { let h = '<span class="q">'; for (let k = 1; k <= 5; k++) h += `<i class="${q >= k - .25 ? '' : 'v'}"></i>`; return h + '</span>'; };
   // Une commande urgente couvre environ 2 h de ventes, dans la limite de la place et de la caisse
@@ -258,6 +331,7 @@ export function creerUI({ jeu, scene }) {
     let h = '';
     const gz = e.gazettes?.at(-1);
     if (gz) h += `<button class="une-gazette${e.gazetteLue === gz.numero ? '' : ' nouvelle'}" data-gazette><span>📰</span><div><b>La Gazette du quartier · n° ${gz.numero}</b><small>${gz.titre}</small></div><em>${e.gazetteLue === gz.numero ? 'Relire' : 'Lire'}</em></button>`;
+    if (soir) h += blocASuivre(e);
     if (b) {
       h += `<div class="journal-bilan"><span>${b.date} · ${Math.round(b.clients)} clients servis</span><b>${fmt(b.recettes)}</b>`
         + `<span>Achats (grain, consommables…)</span><b>−${fmt(b.depenses)}</b><span>Salaires</span><b>−${fmt(b.detail.salaires)}</b><span>Énergie</span><b>−${fmt(b.detail.energie)}</b>`
@@ -553,21 +627,24 @@ export function creerUI({ jeu, scene }) {
     if (!J.a(e, 'peinture')) return `<div class="section-titre">Décoration</div><p class="legende">Fais d’abord le coup de peinture : ensuite, tu choisiras la couleur des murs et le sol.</p><div class="section-titre">Travaux</div>`;
     const mur = J.murActuel(e), sol = J.solActuel(e), ok = J.harmonie(e);
     const choix = (type, liste, actuel) => `<div class="deco-choix">` + liste.map(x => {
-      const verrou = e.rep < (x.rep || 0), p = J.prixDeco(e, x);
+      const nreq = J.niveauRequis(type, x.id), verrouN = J.niveauCafe(e) < nreq, verrou = verrouN || e.rep < (x.rep || 0), p = J.prixDeco(e, x);
       return `<button class="deco${x.id === actuel.id ? ' choisie' : ''}${verrou ? ' verrou' : ''}" data-deco="${type}:${x.id}" title="${x.nom}">
-        <i style="background:${apercuDeco(x, type)}"></i><b>${x.nom}</b><small>${verrou ? `${virg(x.rep)} ★` : x.id === actuel.id ? 'posé' : p ? fmt(p) : 'gratuit'} · ${STYLES[x.style]}</small></button>`;
+        <i style="background:${apercuDeco(x, type)}"></i><b>${x.nom}</b><small>${verrouN ? `⭐ niveau ${nreq}` : verrou ? `${virg(x.rep)} ★` : x.id === actuel.id ? 'posé' : p ? fmt(p) : 'gratuit'} · ${STYLES[x.style]}</small></button>`;
     }).join('') + `</div>`;
     return `<div class="section-titre">Décoration</div>
       <div class="harmonie ${ok ? 'oui' : ''}">${ok ? `✨ <b>Harmonie ${STYLES[mur.style].toLowerCase()}</b> : clients plus contents et +4 % d’attrait` : `Murs <b>${STYLES[mur.style].toLowerCase()}</b>, sol <b>${STYLES[sol.style].toLowerCase()}</b> : choisis le même style pour l’harmonie.`}</div>
-      <div class="dm-titre">Murs</div>${choix('mur', MURS, mur)}<div class="dm-titre">Sol</div>${choix('sol', SOLS, sol)}${soir ? '' : '<p class="legende">Les changements de déco se font le soir.</p>'}
+      <div class="dm-titre">Murs</div>${choix('mur', MURS.filter(x => !x.exclusif || e.deco.vus.includes(x.id)), mur)}<div class="dm-titre">Sol</div>${choix('sol', SOLS, sol)}${soir ? '' : '<p class="legende">Les changements de déco se font le soir.</p>'}
       <div class="section-titre">Travaux</div>`;
   }
   function ongletTravaux(e, soir) {
     const deco = sectionDeco(e, soir);
     const dispo = TRAVAUX.filter(t => J.disponible(e, t)).sort((x, y) => x.prix - y.prix);
-    const faits = TRAVAUX.filter(t => J.a(e, t.id)), bloques = TRAVAUX.length - dispo.length - faits.length;
+    const faits = TRAVAUX.filter(t => J.a(e, t.id));
+    const auNiveau = TRAVAUX.filter(t => J.prerequisOk(e, t) && !J.disponible(e, t)).sort((x, y) => J.niveauRequis('travaux', x.id) - J.niveauRequis('travaux', y.id));
+    const bloques = TRAVAUX.length - dispo.length - faits.length - auNiveau.length;
     return deco + `<p class="legende">${J.places(e)} places assises aujourd’hui. Agrandir fait monter le loyer : regarde l’onglet Finances avant de te lancer.</p>`
       + dispo.map(t => carte({ icone: ICONES_CAT[t.cat], nom: t.nom, tags: `<span class="tag cat">${t.cat}</span>`, desc: t.desc, bouton: btnPrix(t.prix, `data-achat="${t.id}"`, e, soir) })).join('')
+      + auNiveau.map(t => carte({ icone: ICONES_CAT[t.cat], nom: t.nom, tags: `<span class="tag niveau">⭐ niveau ${J.niveauRequis('travaux', t.id)}</span>`, desc: t.desc, cls: 'verrou' })).join('')
       + (bloques ? `<p class="fait" style="color:var(--cafe-doux)">Encore ${bloques} travaux à débloquer plus tard…</p>` : '')
       + `<div class="progres-travaux"><span>${faits.length} / ${TRAVAUX.length} travaux faits</span><div class="jauge"><span style="width:${faits.length / TRAVAUX.length * 100}%"></span></div></div>`;
   }
@@ -604,7 +681,7 @@ export function creerUI({ jeu, scene }) {
     if (d.deco) {
       const [type, id] = d.deco.split(':'), r = J.choisirDeco(e, type, id);
       if (r === 'ok') { scene.majDecor(e); sons.achat(); jeu.sauver(); toast(J.harmonie(e) ? '✨ <b>Harmonie !</b> Les murs et le sol vont parfaitement ensemble.' : `Nouvelle déco : <b>${(type === 'mur' ? J.CATALOGUE_MURS : J.CATALOGUE_SOLS)[id].nom}</b>.`); }
-      else if (r === 'argent') toast("Pas encore assez d'argent."); else if (r === 'verrou') toast('Il faut une meilleure note pour cette déco.'); else if (r === 'ferme') toast('Les travaux de déco se font le soir.');
+      else if (r === 'argent') toast("Pas encore assez d'argent."); else if (r === 'verrou') toast('Il faut une meilleure note pour cette déco.'); else if (r === 'niveau') toast(`⭐ Cette déco se débloque au <b>niveau ${J.niveauRequis(type, id)}</b> du café.`); else if (r === 'ferme') toast('Les travaux de déco se font le soir.');
       majTravaux(); return;
     }
     if (d.boisson) { const r = J.choisirBoisson(e, d.boisson); if (r === 'ok') { sons.clic(); jeu.sauver(); } else if (r === 'verrou') toast('Il faut une meilleure note pour cette boisson.'); else if (r === 'ferme') toast('La boisson du jour se prépare le soir.'); majTravaux(); return; }
@@ -707,7 +784,31 @@ export function creerUI({ jeu, scene }) {
     $('c-nb-succes').textContent = `${m.succes.length}/${SUCCES.length}`;
     $('c-succes').innerHTML = SUCCES.map(s => `<div class="${m.succes.includes(s.id) ? 'oui' : 'non'}"><b>${m.succes.includes(s.id) ? '★ ' : ''}${s.nom}</b>${s.desc}</div>`).join('');
     $('c-histoire').innerHTML = HISTOIRE.filter(h => m.histoire.includes(h.id)).map(h => `<button data-h="${h.id}">${h.titre}</button>`).join('') || '<p class="desc">Rien pour l\'instant.</p>';
+    // Le niveau du café : où on en est, et les trois prochains déblocages
+    const pn = J.progresNiveau(e), suite = DEBLOCAGES.filter(d => d.niveau > pn.niveau).slice(0, 3);
+    $('c-niveau').innerHTML = `<div class="cn-tete"><span class="cn-etoile">${pn.niveau}</span><div><b>Niveau ${pn.niveau}</b><span class="nd-barre"><i style="width:${pn.part * 100}%"></i></span>
+      <small>${Math.round(pn.xp)} / ${pn.besoin} XP · prochain niveau : +${fmt(J.primeNiveau(pn.niveau + 1))}${(pn.niveau + 1) % 5 === 0 ? ' (coffre !)' : ''} · postes jusqu’au niveau ${J.nivMaxPoste(e)}</small></div></div>`
+      + (suite.length ? `<div class="cn-suite">${suite.map(d => `<div><span>⭐ ${d.niveau}</span>${nomDeblocage(d)}</div>`).join('')}</div>` : '');
+    // Les habitués : où en est chaque histoire, et les chapitres à relire
+    $('c-amities').innerHTML = HISTOIRES_HABITUES.map(h => {
+      const s = J.etatHistoire(e, h, jeu.auj), repMin = Math.min(...HABITUES.filter(x => h.qui.includes(x.id)).map(x => x.repMin));
+      const venu = s.visites > 0 || e.rep >= repMin;
+      const etat = s.fini ? `🎁 ${h.cadeau.nom} : ${h.cadeau.effet}` : !venu ? `Pas encore venu : il faudra ${virg(repMin)} ★` : s.demain ? 'La suite de son histoire : demain.'
+        : s.pret ? 'A quelque chose à te raconter : à sa prochaine visite !' : `${s.visites}/${s.seuil} visites avant le chapitre ${s.lus + 1}`;
+      return `<div class="amitie${venu ? '' : ' inconnu'}"><span class="am-ico">${venu ? h.icone : '❔'}</span><div class="am-corps"><b>${venu ? h.nom : 'Un habitué à rencontrer'}</b>${coeurs(s.lus, h.chapitres.length)}<small>${etat}</small>
+        ${s.lus ? `<div class="am-relire">${h.chapitres.slice(0, s.lus).map((c, k) => `<button data-chap="${h.id}:${k}">${k + 1}. ${c.titre}</button>`).join('')}</div>` : ''}</div></div>`;
+    }).join('');
+    const lus = Math.min(m.courrier?.lus || 0, LETTRES.length);
+    $('c-nb-lettres').textContent = `${lus}/${LETTRES.length}`;
+    $('c-lettres').innerHTML = LETTRES.slice(0, lus).map((l, k) => `<button data-lettre="${k}">${l.titre}</button>`).join('')
+      || `<p class="desc">${J.courrierDispo(e, jeu.auj) ? 'Une lettre t’attend : touche l’enveloppe ✉️.' : 'Mamie t’écrit une lettre chaque jour où tu viens jouer (à partir de demain).'}</p>`;
   }
+  $('c-amities').addEventListener('click', ev => { const b = ev.target.closest('button[data-chap]'); if (b) { const [id, k] = b.dataset.chap.split(':'); relireChapitre(id, +k); } });
+  $('c-lettres').addEventListener('click', ev => {
+    const b = ev.target.closest('button[data-lettre]'); if (!b) return;
+    const k = +b.dataset.lettre, l = LETTRES[k];
+    afficherLettre({ ...l, texte: l.texte.replaceAll('{cafe}', J.nomCafe(E())), de: 'Mamie Odette', numero: k + 1, total: LETTRES.length });
+  });
   $('c-histoire').addEventListener('click', ev => { const b = ev.target.closest('button[data-h]'); if (b) { const h = HISTOIRE.find(x => x.id === b.dataset.h); bulle(h.texte, { titre: h.titre }); } });
   // ---------- Réglages (gardés sur cet appareil) ----------
   const CLE_REGLAGES = 'n15x-reglages';
@@ -819,6 +920,8 @@ export function creerUI({ jeu, scene }) {
     const maintenant = performance.now();
     if (e.argent > dernierArgent + .5 && maintenant - dernierPulse > 500) { dernierPulse = maintenant; const a = $('argent'); a.classList.remove('gain'); void a.offsetWidth; a.classList.add('gain'); }
     dernierArgent = e.argent;
+    const pn = J.progresNiveau(e);
+    $('nc-num').textContent = pn.niveau; $('nc-barre').style.width = (pn.part * 100).toFixed(1) + '%';
     // L'en-tête d'un gérant : l'heure et la date, puis l'affluence en mots simples (pas d'euros qui défilent)
     $('ips').textContent = J.ouvert(e) ? heureTexte(e.horloge) : 'Fermé';
     const ph = res.parHeure;
@@ -831,8 +934,12 @@ export function creerUI({ jeu, scene }) {
       el.style.left = x + 'px'; el.style.top = y + 'px';
       // Pas d'étiquettes de jeu arcade : un poste ne se signale que s'il a un problème (panne, débordé, plus de grain)
       const goulot = res.goulot.type === 'station' && res.goulot.i === i && !st.panne, vide = i === 0 && J.ouvert(e) && e.stock[e.maison] <= 0;
-      el.querySelector('.niv').textContent = st.panne ? 'en panne' : goulot ? 'débordé' : vide ? 'plus de grain' : '';
-      el.hidden = !(st.panne || goulot || vide);
+      // Un poste qu'on peut améliorer le signale d'une petite flèche (sans couvrir les problèmes)
+      // (pas dès le premier jour : l'argent de départ sert d'abord aux travaux)
+      const peut = !st.panne && !goulot && !vide && J.niveauCafe(e) >= 3 && st.niv < J.nivMaxPoste(e) && e.argent >= J.coutPoste(e, i) * 3 + 1500;
+      el.querySelector('.niv').textContent = st.panne ? 'en panne' : goulot ? 'débordé' : vide ? 'plus de grain' : peut ? `niv ${st.niv} ⬆` : '';
+      el.hidden = !(st.panne || goulot || vide || peut);
+      el.classList.toggle('peut', peut);
       el.classList.toggle('goulot', goulot || vide);
       el.classList.toggle('panne', !!st.panne);
     });
@@ -933,5 +1040,5 @@ export function creerUI({ jeu, scene }) {
       b.onclick = () => { const msg = J.choisirDecision(E(), k); if (msg) toast(msg, 5000); sons.clic(); jeu.sauver(); majDecision(E()); }; z.appendChild(b); });
   }
   function ouvrirJournal(o) { if (o) onglet = o; ouvrir('p-travaux'); majTravaux(); }
-  return { maj, toast, bulle, pop, parole, humeur, ficheClient, annoncerGazette, afficherGazette, afficherAnnee, celebrer, fermer, toucherStation, objectifAtteint, finJournee, ouvrirJournal, majVitesse, tutoriel };
+  return { maj, toast, bulle, pop, parole, humeur, ficheClient, annoncerGazette, afficherGazette, afficherAnnee, celebrer, celebrerNiveau, majCourrier, raconter, fermer, toucherStation, objectifAtteint, finJournee, ouvrirJournal, majVitesse, tutoriel };
 }

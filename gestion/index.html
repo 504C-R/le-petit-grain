@@ -56,7 +56,9 @@
 
 <div class="hud">
   <div class="carte-argent">
+    <button class="niveau-cafe" id="niveau-cafe" aria-label="Niveau du café"><span id="nc-num">1</span></button>
     <div><div class="nom" id="nom">Le Petit Grain · Lyon</div><b id="argent">0 €</b></div>
+    <span class="nc-barre" aria-hidden="true"><i id="nc-barre"></i></span>
     <div class="droite">
       <div class="etoiles" id="etoiles"></div>
       <div class="ips" id="ips">+0 €/s</div>
@@ -82,6 +84,7 @@
       <div class="stat"><small>Capacité</small><b id="f-debit">0</b></div>
     </div>
     <p class="alerte" id="f-alerte"></p>
+    <div class="poste-niv" id="f-poste"></div>
     <div class="boutons">
       <button class="btn" id="f-up">Former l'équipe<small id="f-up-cout"></small></button>
       <button class="btn vert" id="f-mgr">Manager<small id="f-mgr-cout"></small></button>
@@ -139,6 +142,12 @@
     <div class="bilans" id="c-bilans"></div>
     <h5>Succès <small id="c-nb-succes"></small></h5>
     <div class="succes" id="c-succes"></div>
+    <h5>Niveau du café</h5>
+    <div class="cn" id="c-niveau"></div>
+    <h5>Les habitués</h5>
+    <div class="amities" id="c-amities"></div>
+    <h5>Courrier de mamie <small id="c-nb-lettres"></small></h5>
+    <div class="histoire" id="c-lettres"></div>
     <h5>Souvenirs</h5>
     <div class="histoire" id="c-histoire"></div>
     <h5>Réglages</h5>
@@ -149,6 +158,7 @@
     <button class="lien" id="c-reset">Recommencer une partie de zéro</button>
   </div>
 
+  <button class="b-courrier" id="b-courrier" hidden aria-label="Une lettre t’attend"><img src="assets/icones/lettre.svg" alt=""><span>Courrier</span></button>
   <div class="boutons nav">
     <button class="btn vert" id="b-stock">Réserve<small id="b-stock-txt">grains</small></button>
     <button class="btn" id="b-prix">Prix<small id="b-prix-txt">1,20 €</small></button>
