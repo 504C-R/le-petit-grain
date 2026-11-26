@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path d="M16 22c-5 9-7 22-3 31 2 4 7 6 19 6s17-2 19-6c4-9 2-22-3-31z" fill="#E4C48E" stroke="#4A2A12" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M18 22c4-3 24-3 28 0l-3-8c-6 2-16 2-22 0z" fill="#C9A06A" stroke="#4A2A12" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round"/>
+    <rect x="18" y="32" width="28" height="16" rx="3" fill="#FFFDF6" stroke="#4A2A12" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round"/><text x="32" y="44" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="9" text-anchor="middle" fill="#4A2A12">MOKA</text>
+    <path d="M20 52h8" stroke="#5FAE2E" stroke-width="3"/><path d="M28 52h8" stroke="#FFD34A" stroke-width="3"/><path d="M36 52h8" stroke="#E8584F" stroke-width="3"/></svg>

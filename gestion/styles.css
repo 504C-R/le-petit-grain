@@ -1118,3 +1118,38 @@ body.panneau-ouvert .b-marche { display:none; }
   .ccarte::before, .rl-gagne::before, .ccarte.r-legendaire, .rl-gagne.r-legendaire, .evt-jour.actif, .env-anim, .env-rabat, .env-cachet, .lettre.sort, .niveau-cafe.monte { animation:none !important; }
   .env-anim { display:none; }
 }
+
+/* ===== v15 : la ligne du niveau dans l'en-tête, et les illustrations des cartes et des caisses ===== */
+.carte-argent { flex-wrap:wrap; row-gap:6px; }
+.carte-argent .nom { padding-left:0; }
+.niv-ligne { flex:1 0 100%; display:flex; align-items:center; gap:8px; padding:0; margin:2px 0 0; border:0; background:none; cursor:pointer; position:relative; font:inherit; }
+.niv-medaille { position:relative; flex:none; width:38px; height:38px; margin:-4px 0 -6px -4px; filter:drop-shadow(0 2px 0 rgba(122,69,32,.35)); }
+.niv-medaille img { width:100%; height:100%; display:block; }
+.niv-medaille span { position:absolute; left:0; right:0; top:5px; text-align:center; font:700 15px/22px Fredoka, Nunito, sans-serif; color:#6B3A0E; text-shadow:0 1px 0 #FFF6C8; }
+.niv-barre { position:relative; flex:1; height:17px; border-radius:999px; background:#EADCC6; border:2px solid #C98A1E; box-shadow:inset 0 2px 3px rgba(90,46,18,.18); overflow:hidden; }
+.niv-barre i { position:absolute; left:0; top:0; bottom:0; width:0; border-radius:inherit; background:linear-gradient(#FFE98A, #F5B82E 55%, #E39A1C); box-shadow:inset 0 -2px 0 rgba(160,96,20,.35); transition:width .6s cubic-bezier(.2,.8,.2,1); overflow:hidden; }
+.niv-barre i::after { content:''; position:absolute; top:0; bottom:0; width:40%; left:-40%; background:linear-gradient(90deg, transparent, rgba(255,255,255,.7), transparent); animation:barreReflet 3.2s ease-in-out infinite; }
+.niv-barre em { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font:700 11px Fredoka, Nunito, sans-serif; font-style:normal; color:#5A2E12; text-shadow:0 1px 0 rgba(255,255,255,.7); white-space:nowrap; }
+.niv-pct { flex:none; min-width:34px; text-align:right; font:700 13px Fredoka, Nunito, sans-serif; color:#A0602E; }
+.niv-ligne.gain .niv-barre { animation:barreGain .7s ease-out; }
+.niv-ligne.monte .niv-medaille { animation:etoileMonte .9s cubic-bezier(.2,1.6,.4,1); }
+.xp-pop { position:absolute; right:42px; top:-4px; font:700 13px Fredoka, Nunito, sans-serif; color:#3E7A22; text-shadow:0 1px 0 #fff, 0 0 4px #fff; pointer-events:none; animation:xpPop 1.4s ease-out forwards; }
+@keyframes barreReflet { 0%, 55% { left:-40%; } 100% { left:110%; } }
+@keyframes barreGain { 30% { box-shadow:0 0 0 3px rgba(245,184,46,.55), inset 0 2px 3px rgba(90,46,18,.18); } }
+@keyframes xpPop { 0% { opacity:0; transform:translateY(6px) scale(.8); } 20% { opacity:1; transform:translateY(0) scale(1.1); } 100% { opacity:0; transform:translateY(-22px) scale(1); } }
+.cn-etoile { background-image:url('assets/icones/niveau.svg') !important; padding-top:0 !important; padding-bottom:8px; color:#6B3A0E !important; }
+
+/* Les illustrations : tailles selon l'endroit */
+.ic-carte { display:block; width:100%; height:100%; object-fit:contain; pointer-events:none; user-select:none; }
+.ccarte .cc-ico { width:62px; height:62px; padding:6px; }
+.rl-carte span { width:62px; height:62px; display:block; }
+.rl-ico { width:96px; height:96px; display:block; }
+.emp span { width:38px; height:38px; display:block; }
+.serie > span { flex:none; width:36px; height:36px; display:block; }
+.serie-cartes { display:flex; gap:3px; margin-top:3px; }
+.ic-carte.mini, .mini-vide { width:20px; height:20px; }
+.mini-vide { display:grid; place-items:center; border-radius:5px; background:#EDE4D6; color:#B9A68C; font:700 12px Fredoka, Nunito, sans-serif; font-style:normal; }
+.ca-ico { flex:none; width:54px; height:54px; display:block; }
+.ca-ico img { width:100%; height:100%; display:block; filter:drop-shadow(0 3px 0 rgba(90,46,18,.2)); }
+.rl-titre-ico { width:28px; height:28px; vertical-align:-7px; }
+.ccarte { padding-top:26px; } .ccarte .cc-rar { top:6px; left:6px; } .ccarte.active::after { top:6px; right:6px; }

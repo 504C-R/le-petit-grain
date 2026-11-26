@@ -24,7 +24,7 @@ const COURTS_MOMENTS = ['Matin', 'Midi', 'Aprèm', 'Soir'];
 
 export function creerUI({ jeu, scene }) {
   const E = () => jeu.e;
-  let ouvert = null, choisie = null, accUI = 0, accPanneau = 0, revenuLisse = 0, toastT = null, argentAffiche = E().argent, dernierArgent = E().argent, dernierPulse = 0;
+  let ouvert = null, choisie = null, accUI = 0, accPanneau = 0, revenuLisse = 0, toastT = null, argentAffiche = E().argent, dernierArgent = E().argent, dernierPulse = 0, dernierXp = null;
 
   // ---------- Bulle de mamie et notifications ----------
   function bulle(texte, { titre = 'Mamie Odette', boutons = [{ label: "D'accord !" }] } = {}) {
@@ -71,6 +71,9 @@ export function creerUI({ jeu, scene }) {
   let ongletMarche = 'defis';
   const pourcent = x => `${x >= 0 ? '+' : ''}${Math.round(x * 100)} %`;
   const texteBonus = (c, niv) => `${pourcent((c.effet === 'grain' || c.effet === 'loyer' ? -1 : 1) * J.valeurCarte(c, niv))} ${EFFETS_CARTES[c.effet]}`;
+  // Les cartes et les caisses ont leurs illustrations dessinées (assets/icones/carte-<id>.svg, générées par tools/icones-cartes.mjs)
+  const ORDRE_RARETE = ['commune', 'rare', 'epique', 'legendaire'];
+  const imgCarte = (c, cls = '') => `<img class="ic-carte${cls ? ' ' + cls : ''}" src="assets/icones/carte-${c.id}.svg" alt="" draggable="false">`;
   function carteHtml(c, p, actif, actions = true) {
     const r = RARETES[c.rarete];
     if (!p) return `<div class="ccarte inconnue" style="--rarete:${r.couleur}"><span class="cc-ico">❔</span><b>???</b><small>${r.nom}</small></div>`;
@@ -78,7 +81,7 @@ export function creerUI({ jeu, scene }) {
     const btns = !actions ? '' : `<div class="cc-btns">${actif ? `<button data-retirer="${c.id}">Retirer</button>` : `<button class="vert" data-activer="${c.id}">Activer</button>`}`
       + (J.peutFusionner(E(), c.id) ? `<button class="or" data-fusion="${c.id}">Fusionner ×${CARTES_NIVEAUX.fusion}</button>` : '')
       + (p.n >= 2 ? `<button data-recycler="${c.id}">Recycler +${r.recyclage}</button>` : '') + `</div>`;
-    return `<div class="ccarte r-${c.rarete}${actif ? ' active' : ''}" style="--rarete:${r.couleur}"><span class="cc-rar">${r.nom}</span><span class="cc-ico">${c.icone}</span><b>${c.nom}</b>
+    return `<div class="ccarte r-${c.rarete}${actif ? ' active' : ''}" style="--rarete:${r.couleur}"><span class="cc-rar">${r.nom}</span><span class="cc-ico">${imgCarte(c)}</span><b>${c.nom}</b>
       <small class="cc-bonus">${texteBonus(c, p.niv)}</small><span class="cc-niv">${etoiles}${p.n > 1 ? ` · ×${p.n}` : ''}</span>${btns}</div>`;
   }
   function majMarche() {
@@ -98,7 +101,7 @@ export function creerUI({ jeu, scene }) {
         + (e.defi ? `<div class="mission${e.defi.fini ? ' fini' : ''}"><span class="mi-ico">⚡</span><div><b>Défi du jour : ${esc(e.defi.texte)}</b><small>${e.defi.fini ? 'Réussi !' : e.defi.rate ? 'Raté' : 'En cours'}</small></div><em><img src="assets/icones/grain-or.svg" alt="">${OR.defi}</em></div>` : '');
     } else if (ongletMarche === 'caisses') {
       h = `<p class="legende">Chaque caisse contient une carte. Les chances sont affichées : plus la caisse est chère, plus les cartes rares sortent.</p>`
-        + CAISSES.map(k => `<div class="caisse"><span class="ca-ico">${k.icone}</span><div><b>${k.nom}</b><div class="ca-chances">${Object.keys(RARETES).filter(r => k.chances[r]).map(r => `<span style="--rarete:${RARETES[r].couleur}">${RARETES[r].nom} ${k.chances[r]} %</span>`).join('')}</div></div>
+        + CAISSES.map(k => `<div class="caisse"><span class="ca-ico"><img src="assets/icones/caisse-${k.id}.svg" alt=""></span><div><b>${k.nom}</b><div class="ca-chances">${Object.keys(RARETES).filter(r => k.chances[r]).map(r => `<span style="--rarete:${RARETES[r].couleur}">${RARETES[r].nom} ${k.chances[r]} %</span>`).join('')}</div></div>
           ${J.caissesGratuites(e, k.id) ? `<button class="btn mini vert" data-caisse="${k.id}">Gratuite ×${J.caissesGratuites(e, k.id)}</button>` : `<button class="btn mini or${J.grainsOr(e) < k.prix ? ' off' : ''}" data-caisse="${k.id}"><img src="assets/icones/grain-or.svg" alt="">${k.prix}</button>`}</div>`).join('');
     } else if (ongletMarche === 'boutique') {
       const offres = e.boutique?.offres || [], u = J.uniforme(e), possedes = e.meta.uniformes || ['cafe'];
@@ -117,13 +120,13 @@ export function creerUI({ jeu, scene }) {
         : '<p class="desc">La ligue commence avec ta première journée.</p>';
     } else {
       const n = J.nbEmplacements(e), actives = e.meta.cartesActives || [];
-      const emp = EMPLACEMENTS.map((x, k) => k < n ? (actives[k] ? `<div class="emp plein" style="--rarete:${RARETES[J.CATALOGUE_CARTES[actives[k]].rarete].couleur}"><span>${J.CATALOGUE_CARTES[actives[k]].icone}</span><small>${texteBonus(J.CATALOGUE_CARTES[actives[k]], J.carteDe(e, actives[k]).niv)}</small></div>` : '<div class="emp"><span>＋</span><small>Emplacement libre</small></div>')
+      const emp = EMPLACEMENTS.map((x, k) => k < n ? (actives[k] ? `<div class="emp plein" style="--rarete:${RARETES[J.CATALOGUE_CARTES[actives[k]].rarete].couleur}"><span>${imgCarte(J.CATALOGUE_CARTES[actives[k]])}</span><small>${texteBonus(J.CATALOGUE_CARTES[actives[k]], J.carteDe(e, actives[k]).niv)}</small></div>` : '<div class="emp"><span>＋</span><small>Emplacement libre</small></div>')
         : `<div class="emp verrou"><span>🔒</span><small>Niveau ${x.niveau}</small></div>`).join('');
       const possedees = Object.keys(e.meta.cartes || {}).length;
       h = `<div class="section-titre">Cartes actives (${actives.length}/${n})</div><div class="emplacements">${emp}</div>
         <div class="section-titre">Les collections</div><p class="legende">Les 4 cartes d’une série, même rangées : un bonus permanent en plus.</p>
         <div class="series">${COLLECTIONS.map(k => { const ids = CARTES.filter(c => c.collection === k.id), n = ids.filter(c => J.carteDe(e, c.id)).length, ok = n === ids.length;
-          return `<div class="serie${ok ? ' complete' : ''}"><span>${k.icone}</span><div><b>${k.nom}</b><small>${ok ? '✓ ' : ''}${pourcent(k.valeur)} ${EFFETS_CARTES[k.effet]}</small><span class="serie-cartes">${ids.map(c => J.carteDe(e, c.id) ? c.icone : '❔').join(' ')}</span></div><em>${n}/${ids.length}</em></div>`; }).join('')}</div>
+          return `<div class="serie${ok ? ' complete' : ''}"><span>${imgCarte(ids.reduce((x, y) => ORDRE_RARETE.indexOf(y.rarete) > ORDRE_RARETE.indexOf(x.rarete) ? y : x))}</span><div><b>${k.nom}</b><small>${ok ? '✓ ' : ''}${pourcent(k.valeur)} ${EFFETS_CARTES[k.effet]}</small><span class="serie-cartes">${ids.map(c => J.carteDe(e, c.id) ? imgCarte(c, 'mini') : '<i class="mini-vide">?</i>').join('')}</span></div><em>${n}/${ids.length}</em></div>`; }).join('')}</div>
         <div class="section-titre">Toutes les cartes ${possedees}/${CARTES.length}</div><p class="legende">${CARTES_NIVEAUX.fusion} cartes identiques fusionnent en une carte plus forte (★★, puis ★★★). Les doubles se recyclent en grains d’or.</p>
         <div class="collection">${[...CARTES].sort((x, y) => !!J.carteDe(e, y.id) - !!J.carteDe(e, x.id)).map(c => carteHtml(c, J.carteDe(e, c.id), actives.includes(c.id))).join('')}</div>`;
     }
@@ -177,8 +180,8 @@ export function creerUI({ jeu, scene }) {
     jeu.sauver(); caisseEnCours = id; pauserPourLire(); sons.clic();
     const N = 46, GAGNANT = 38, LARGE = 104, ECART = 8;
     const bande = Array.from({ length: N }, (_, i) => i === GAGNANT ? r.carte : J.tirerCarte(k, Math.random));
-    $('rl-titre').textContent = `${k.icone} ${k.nom}`;
-    $('rl-bande').innerHTML = bande.map(c => `<div class="rl-carte r-${c.rarete}" style="--rarete:${RARETES[c.rarete].couleur}"><span>${c.icone}</span><small>${c.nom}</small></div>`).join('');
+    $('rl-titre').innerHTML = `<img class="rl-titre-ico" src="assets/icones/caisse-${k.id}.svg" alt=""> ${k.nom}`;
+    $('rl-bande').innerHTML = bande.map(c => `<div class="rl-carte r-${c.rarete}" style="--rarete:${RARETES[c.rarete].couleur}"><span>${imgCarte(c)}</span><small>${c.nom}</small></div>`).join('');
     $('rl-resultat').hidden = true; $('rl-boutons').hidden = true;
     const bandeEl = $('rl-bande'); bandeEl.style.transition = 'none'; bandeEl.style.transform = 'translateX(0)';
     $('roulette').hidden = false;
@@ -201,7 +204,7 @@ export function creerUI({ jeu, scene }) {
       bandeEl.children[GAGNANT].classList.add('gagnant');
       // Une carte épique ou légendaire : un éclair de lumière et des confettis dorés
       if (c.rarete === 'epique' || c.rarete === 'legendaire') eclatRoulette(c.rarete);
-      $('rl-resultat').innerHTML = `<div class="rl-gagne r-${c.rarete}" style="--rarete:${rar.couleur}"><span class="rl-rar">${rar.nom}</span><span class="rl-ico">${c.icone}</span><b>${c.nom}</b><small>${texteBonus(c, r.niv)}</small></div>
+      $('rl-resultat').innerHTML = `<div class="rl-gagne r-${c.rarete}" style="--rarete:${rar.couleur}"><span class="rl-rar">${rar.nom}</span><span class="rl-ico">${imgCarte(c)}</span><b>${c.nom}</b><small>${texteBonus(c, r.niv)}</small></div>
         <p>${r.nouvelle ? 'Nouvelle carte !' : r.fusion ? `Tu en as ${r.exemplaires} : tu peux la <b>fusionner</b> !` : `Doublon : ${r.exemplaires}/${CARTES_NIVEAUX.fusion} pour fusionner.`}${r.activee ? ' Elle est déjà active.' : ''}</p>
         ${r.collection ? `<p class="rl-collection">🎉 Collection « ${r.collection.nom} » complète : ${pourcent(r.collection.valeur)} ${EFFETS_CARTES[r.collection.effet]}, pour toujours !</p>` : ''}`;
       $('rl-resultat').hidden = false; $('rl-boutons').hidden = false;
@@ -1132,7 +1135,18 @@ export function creerUI({ jeu, scene }) {
     const aFaire = (J.roueDispo(e, jeu.auj) ? 1 : 0) + CAISSES.reduce((n, k) => n + J.caissesGratuites(e, k.id), 0);
     $('b-marche').dataset.badge = aFaire || '';
     const pn = J.progresNiveau(e);
-    $('nc-num').textContent = pn.niveau; $('nc-barre').style.width = (pn.part * 100).toFixed(1) + '%';
+    if ($('nc-num').textContent !== String(pn.niveau)) $('nc-num').textContent = pn.niveau;
+    $('nc-barre').style.width = (pn.part * 100).toFixed(1) + '%';
+    const txtNiv = pn.niveau >= 60 ? `Niveau ${pn.niveau} · maximum !` : `Niveau ${pn.niveau} · ${Math.floor(pn.xp).toLocaleString('fr-FR')} / ${pn.besoin.toLocaleString('fr-FR')} XP`;
+    if ($('nc-txt').textContent !== txtNiv) { $('nc-txt').textContent = txtNiv; $('nc-pct').textContent = `${Math.floor(pn.part * 100)} %`; }
+    // Un gros gain d'expérience (commande, mission, travaux…) : un « +XP » s'envole de la barre
+    const xpB = e.meta.xpBonus || 0;
+    if (dernierXp != null && xpB - dernierXp >= 5) {
+      const p = document.createElement('span'); p.className = 'xp-pop'; p.textContent = `+${Math.round(xpB - dernierXp)} XP`;
+      $('niveau-cafe').appendChild(p); setTimeout(() => p.remove(), 1500);
+      $('niveau-cafe').classList.remove('gain'); void $('niveau-cafe').offsetWidth; $('niveau-cafe').classList.add('gain');
+    }
+    dernierXp = xpB;
     // L'en-tête d'un gérant : l'heure et la date, puis l'affluence en mots simples (pas d'euros qui défilent)
     $('ips').textContent = J.ouvert(e) ? heureTexte(e.horloge) : 'Fermé';
     const ph = res.parHeure;

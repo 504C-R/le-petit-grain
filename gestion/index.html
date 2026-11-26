@@ -56,14 +56,18 @@
 
 <div class="hud">
   <div class="carte-argent">
-    <button class="niveau-cafe" id="niveau-cafe" aria-label="Niveau du café"><span id="nc-num">1</span></button>
     <div><div class="nom" id="nom">Le Petit Grain · Lyon</div><b id="argent">0 €</b></div>
-    <span class="nc-barre" aria-hidden="true"><i id="nc-barre"></i></span>
     <div class="droite">
       <div class="etoiles" id="etoiles"></div>
       <div class="ips" id="ips">+0 €/s</div>
       <small id="tasses">0 tasse/min</small>
     </div>
+    <!-- La ligne du niveau du café : médaillon, barre d'expérience, pourcentage -->
+    <button class="niv-ligne" id="niveau-cafe" aria-label="Niveau du café">
+      <span class="niv-medaille"><img src="assets/icones/niveau.svg" alt=""><span id="nc-num">1</span></span>
+      <span class="niv-barre"><i id="nc-barre"></i><em id="nc-txt">Niveau 1</em></span>
+      <span class="niv-pct" id="nc-pct">0 %</span>
+    </button>
   </div>
   <div class="puces" id="puces"></div>
   <div class="objectif" id="objectif" hidden><span class="cible">🎯</span><span id="obj-txt"></span><b id="obj-prime"></b></div>
