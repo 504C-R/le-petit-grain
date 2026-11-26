@@ -8,8 +8,8 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { nomCafe, prixEffectif, neige, murActuel, solActuel, formuleDuMoment, a, tierMachine, nbMachines, tierMoulin, debitStation, debitMax, panier, pleut, choisirHabitue, cafemaxOuvert, capaciteReserve, prixProduit, produitActif, CATALOGUE_CARTE, partsCarte, ratioPrixCarte, satisfaction, ouvert, avanceeJournee, CATALOGUE_MACHINES } from './game.js';
-import { G, VILLES, INFOS_VILLES } from './data.js';
+import { nomCafe, prixEffectif, neige, murActuel, solActuel, formuleDuMoment, a, tierMachine, nbMachines, tierMoulin, debitStation, debitMax, panier, pleut, choisirHabitue, choisirVisiteur, cafemaxOuvert, capaciteReserve, prixProduit, produitActif, CATALOGUE_CARTE, partsCarte, ratioPrixCarte, satisfaction, ouvert, avanceeJournee, CATALOGUE_MACHINES } from './game.js';
+import { G, VILLES, INFOS_VILLES, VISITE_RARE } from './data.js';
 import { Grille } from './chemins.js';
 
 // Modèles 3D générés par Blender (tools/blender/modeles.py). Si un fichier manque, on garde les formes simples.
@@ -1311,7 +1311,8 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
       : r < .85 ? 'Pas cher du tout, j’adore !' : pick(['Un bon petit café, tranquille.', 'Sympa, je reviendrai.', 'Rien à redire, c’est correct.']);
     const humeur = r > 1.15 ? '💸' : sat >= 4.2 ? '😍' : sat >= 3.4 ? '🙂' : sat < 2.8 ? '😕' : null;
     const age = 18 + Math.floor(Math.random() * 62);
-    return { nom: hab ? hab.nom : pick(PRENOMS_CLIENTS), age: hab ? null : age, metier: hab ? 'un habitué' : pick(METIERS), commande, pense, humeur, habitue: !!hab };
+    return { nom: hab ? hab.nom : pick(PRENOMS_CLIENTS), age: hab ? null : age, metier: hab ? (hab.rare ? hab.qui : 'un habitué') : pick(METIERS), commande,
+      pense: hab?.rare ? hab.phrase : pense, humeur, habitue: !!hab, rare: !!hab?.rare };
   }
 
   const COULEURS_TENUES = [0xE8584F, 0xF2B632, 0x6CC04A, 0x4FA3E0, 0xA77BDB, 0x2FB8B0, 0xF28A3A, 0xFFFFFF, 0xF06FA8];
@@ -1595,13 +1596,16 @@ export async function creerScene(conteneur, { surStation, surPop, fmt, surHabitu
       minuteurClient = Math.max(.7, 3.2 / (1 + res.demande * .8));
       const en = entree();
       // Environ un client sur huit est un habitué (s'il n'y en a pas déjà un dans la salle)
-      const hab = !clients.some(x => x.habitue) && Math.random() < .13 ? choisirHabitue(e, Math.random()) : null;
+      // Plus rarement, un visiteur à collectionner (un par jour au plus) : il remplace l'habitué
+      const rare = !clients.some(x => x.habitue) && Math.random() < VISITE_RARE.chance ? choisirVisiteur(e, Math.random) : null;
+      const hab = rare || (!clients.some(x => x.habitue) && Math.random() < .13 ? choisirHabitue(e, Math.random()) : null);
       const cheveux = pick(CHEVEUX);
       const corpsClient = hab ? perso(hab.habit, hab.cheveux, { peau: hab.peau }) : perso(pick(HABITS), cheveux, { peau: pick(PEAUX), pantalon: pick(PANTALONS) });
       if (hab) accessoire(corpsClient, hab.accessoire); else habiller(corpsClient, cheveux, e);
       const parapluie = pleut(e) && Math.random() < .75 ? accessoire(corpsClient, 'parapluie') : null;
       const c = new Marcheur(put(corpsClient, en.x, 0, en.z), 1.7 + Math.random() * .5);
       c.habitue = hab; c.parapluie = parapluie;
+      if (rare) [600, 3200].forEach(t => setTimeout(() => { if (!c.fini) surHumeur(c.o.position.clone().add(new THREE.Vector3(0, 2, 0)), '✨'); }, t));
       // Un client sur dix vient avec son chien (un sur quatre quand il fait beau)
       if (Math.random() < (e.meteo === 'soleil' ? .25 : .1)) { c.chien = chienPour(); if (c.chien) c.chien.o.position.set(en.x + .5, 0, en.z); }
       c.o.rotation.y = Math.PI;

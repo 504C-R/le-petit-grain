@@ -9,7 +9,8 @@ import {
   JOURS_SEMAINE, AFFLUENCE_JOUR, NOMS_MOIS, SAISONS, VIENNOISERIES, NOTE, NOTORIETE, CONSOMMABLES,
   CARTE, VARIETE, DEUXIEME_TASSE, MARKETING, FIDELITE, DIFFICULTES, MEDAILLES, NOUVELLES_QUARTIER,
   LETTRES, LETTRES_QUARTIER, LETTRE_QUARTIER, SECRET_MAMIE, AMITIE, CADEAUX_HABITUES, HISTOIRES_HABITUES,
-  NIVEAU_CAFE, XP, DEBLOCAGES, NIVEAUX_POSTES,
+  NIVEAU_CAFE, XP, DEBLOCAGES, NIVEAUX_POSTES, COMMANDES, CLIENTS_COMMANDES, ABSENCE, VISITEURS, VISITE_RARE,
+  OR, MISSIONS, RARETES, CARTES_NIVEAUX, EMPLACEMENTS, CARTES as CARTES_COLLECTION, CAISSES,
 } from './data.js';
 const CA = Object.fromEntries(CARTE.map(p => [p.id, p]));
 const MK = Object.fromEntries(MARKETING.map(m => [m.id, m]));
@@ -32,7 +33,8 @@ export const HEURES_MOMENT = MOMENTS.map(m => m.a - m.de);
 // ---------- État ----------
 export function nouvelleMeta() {
   return { succes: [], histoire: [], tasses: 0, totalGagne: 0, reparations: 0, critiques: 0, habitues: {}, nomCafe: '', ville: 0, clientsTotal: 0,
-    courrier: null, amities: {}, cadeaux: [], secret: false, xpBonus: 0, niveau: 1 };
+    courrier: null, amities: {}, cadeaux: [], secret: false, xpBonus: 0, niveau: 1, album: {}, visiteJour: 0,
+    grainsOr: OR.depart, orTotal: 0, cartes: {}, cartesActives: [], caissesOuvertes: 0 };
 }
 export const nouvelleJournee = () => ({ recettes: 0, depenses: 0, charges: 0, tasses: 0, clients: 0, perdus: 0, satisfaction: 0,
   viennoiseries: 0, invendus: 0, produits: {}, remises: 0,
@@ -62,6 +64,7 @@ export function nouvelEtat(meta = nouvelleMeta()) {
     meteo: 'nuages', meteoDemain: 'soleil', boisson: 'aucune', deco: { mur: 'creme', sol: 'parquet', vus: ['creme', 'parquet'] }, formules: {}, defi: null,
     dosage: DOSAGE.reference, service: 1,
     carte: carteDepart(), campagnes: [], fidelite: { active: false, membres: 0 }, gazettes: [],
+    commandesSpe: [], attenteCommande: 0, compteurCommandes: 0,
     evts: [], ruptureDepuis: 0, rupturesVues: 0, lait: 0, laitVide: false,
     phase: 'service', horloge: HORAIRES.ouverture, nuitReste: 0, jour: 1,
     journee: nouvelleJournee(), bilans: [], decision: null, decisionsDuJour: [],
@@ -104,6 +107,7 @@ export function restaurer(d) {
   // Parties d'avant les niveaux : un peu d'XP pour les travaux déjà faits, et on part du niveau atteint (sans pluie de primes)
   if (d.meta?.xpBonus == null) e.meta.xpBonus = e.achats.length * 30;
   if (d.meta?.niveau == null) e.meta.niveau = niveauCafe(e);
+  if (d.meta?.grainsOr == null) e.meta.grainsOr = 30;   // de quoi ouvrir sa première caisse
   return e;
 }
 
@@ -153,7 +157,9 @@ export function verifierNiveau(e) {
   while (e.meta.niveau < n) {
     const k = ++e.meta.niveau, p = primeNiveau(k);
     encaisserPrime(e, p);
-    nouveaux.push({ niveau: k, prime: p, debloque: deblocagesNiveau(k), coffre: k % 5 === 0, nivMaxPoste: nivMaxPoste(e) });
+    const or = gagnerOr(e, k % 5 === 0 ? OR.coffre : OR.niveau);
+    const emplacement = EMPLACEMENTS.some(x => x.niveau === k && k > 1);
+    nouveaux.push({ niveau: k, prime: p, or, emplacement, debloque: deblocagesNiveau(k), coffre: k % 5 === 0, nivMaxPoste: nivMaxPoste(e) });
   }
   return nouveaux;
 }
@@ -282,10 +288,10 @@ export function capacites(e, k = momentIndex(e)) {
   let boissons = 0;
   for (let i = 0; i < Math.min(baristas.length, caps.length); i++) boissons += Math.min(baristas[i], caps[i]);
   if (salle <= 0) boissons *= PERSONNEL.sansSalle;
-  boissons *= multPoste(e, 2);
-  const moulin = e.st[1].panne ? 0 : MO[e.moulin].vitesse * CAPACITE.moulin * multPoste(e, 1);
+  boissons *= multPoste(e, 2) * (1 + bonusCarte(e, 'bar'));
+  const moulin = e.st[1].panne ? 0 : MO[e.moulin].vitesse * CAPACITE.moulin * multPoste(e, 1) * (1 + bonusCarte(e, 'moulin'));
   const placesH = places(e) * CAPACITE.placesParHeure / (1 - partEmporter(e));
-  return { boissons, moulin, salle: salle > 0 ? salle * multPoste(e, 3) : Infinity, places: placesH, cuisine, baristas: baristas.length, enSalle: presents.filter(p => p.role === 'salle').length, presents: presents.length };
+  return { boissons, moulin, salle: salle > 0 ? salle * multPoste(e, 3) * (1 + bonusCarte(e, 'salle')) : Infinity, places: placesH, cuisine, baristas: baristas.length, enSalle: presents.filter(p => p.role === 'salle').length, presents: presents.length };
 }
 
 // ---------- Qualité, prix, demande ----------
@@ -313,8 +319,8 @@ export function facteurDosage(e) {
   return Tb[Tb.length - 1][1];
 }
 export function reglerDosage(e, g) { e.dosage = Math.round(Math.max(DOSAGE.min, Math.min(DOSAGE.max, g)) / DOSAGE.pas) * DOSAGE.pas; return 'ok'; }
-export const qualite = e => G[e.maison].q * qualiteEquipement(e) * fraicheur(e, e.maison) * facteurDosage(e) * savoirFaire(e);
-export const prixJuste = e => (1.3 + .42 * qualite(e)) * villeInfo(e).prix;
+export const qualite = e => G[e.maison].q * qualiteEquipement(e) * fraicheur(e, e.maison) * facteurDosage(e) * savoirFaire(e) * (1 + bonusCarte(e, 'gout'));
+export const prixJuste = e => (1.3 + .42 * qualite(e)) * villeInfo(e).prix * (1 + bonusCarte(e, 'prix'));
 export const coutTasse = e => G[e.maison].prixSac * F[e.fournisseur].prixMult * consoParTasse(e) / DOSES_SAC;
 export const prixEffectif = e => e.prix * (ouvert(e) ? (e.tarifs?.[momentIndex(e)] ?? 1) : 1);
 export function reglerPrix(e, p) { e.prix = Math.round(Math.max(.8, Math.min(9, p)) * 20) / 20; }
@@ -335,7 +341,7 @@ export function courbeHeure(h) {
   return COURBE_HEURE[COURBE_HEURE.length - 1][1];
 }
 export const attrait = e => (a(e, 'enseigne') ? 1.12 : 1) * (a(e, 'ardoise') ? 1.04 : 1) * (a(e, 'emporter') ? 1.1 : 1) * (a(e, 'velo') ? 1.12 : 1)
-  * (a(e, 'etage') ? 1.2 : 1) * (a(e, 'jukebox') ? 1.05 : 1) * (harmonie(e) ? 1.04 : 1) * (1 + bonusCadeaux(e, 'clients'));
+  * (a(e, 'etage') ? 1.2 : 1) * (a(e, 'jukebox') ? 1.05 : 1) * (harmonie(e) ? 1.04 : 1) * (1 + bonusCadeaux(e, 'clients')) * (1 + bonusCarte(e, 'clients'));
 // ---------- Météo, saison et boisson du jour ----------
 export const meteoDuJour = e => MET[e.meteo] || MET.nuages;
 export function multMeteo(e) {
@@ -516,10 +522,10 @@ export function cibleReputation(e) {
 }
 
 // ---------- Réserve et commandes (en kilos) ----------
-export const capaciteReserve = e => Math.round((RESERVE_KG.base + (a(e, 'palette') ? RESERVE_KG.palette : 0) + (a(e, 'arriere') ? RESERVE_KG.arriere : 0) + (a(e, 'entrepot') ? RESERVE_KG.entrepot : 0)) * multPoste(e, 0)) * DOSES_SAC;
+export const capaciteReserve = e => Math.round((RESERVE_KG.base + (a(e, 'palette') ? RESERVE_KG.palette : 0) + (a(e, 'arriere') ? RESERVE_KG.arriere : 0) + (a(e, 'entrepot') ? RESERVE_KG.entrepot : 0)) * multPoste(e, 0) * (1 + bonusCarte(e, 'reserve'))) * DOSES_SAC;
 const grainsCommandes = e => e.commandes.concat(e.livraisonsMatin).filter(c => c.grain !== 'lait').reduce((x, c) => x + c.sacs * DOSES_SAC, 0);
 export const totalStock = e => Object.values(e.stock).reduce((x, y) => x + y, 0) + grainsCommandes(e);
-export const prixKg = (e, g) => G[g].prixSac * F[e.fournisseur].prixMult;
+export const prixKg = (e, g) => G[g].prixSac * F[e.fournisseur].prixMult * (1 - bonusCarte(e, 'grain'));
 export function commander(e, grain, kg, auto = false) {
   if (!e.debloques.includes(grain)) return 'verrou';
   if (ouvert(e)) return 'ferme';
@@ -609,7 +615,7 @@ export function choisirGrain(e, id) { if (!e.debloques.includes(id)) return 'ver
 
 // ---------- Finances : charges, mois, prêts, découvert ----------
 export const energieJour = e => ENERGIE.base + ENERGIE.parMachine * nbMachines(e) + (a(e, 'clim') ? ENERGIE.clim : 0) + (a(e, 'cheminee') ? ENERGIE.cheminee : 0);
-export const loyerMois = e => Math.round(difficulte(e).loyer * (villeInfo(e).loyer || 1) * (MOIS.loyer + (a(e, 'agrandir') ? MOIS.agrandir : 0) + (a(e, 'etage') ? MOIS.etage : 0)) + (a(e, 'terrasse') ? MOIS.terrasse : 0));
+export const loyerMois = e => Math.round((1 - bonusCarte(e, 'loyer')) * difficulte(e).loyer * (villeInfo(e).loyer || 1) * (MOIS.loyer + (a(e, 'agrandir') ? MOIS.agrandir : 0) + (a(e, 'etage') ? MOIS.etage : 0)) + (a(e, 'terrasse') ? MOIS.terrasse : 0));
 export const entretienMois = e => Math.round(machinesInstallees(e).reduce((s, m) => s + m.prix, 0) * MOIS.entretien + MO[e.moulin].prix * MOIS.entretien);
 export function chargesJour(e) {
   const salaires = masseSalarialeJour(e), energie = energieJour(e), agios = e.argent < 0 ? -e.argent * DECOUVERT.agios : 0;
@@ -966,6 +972,8 @@ export function ouvrir(e, rnd = Math.random) {
 export function tick(e, dt, rnd = Math.random) {
   const arrivees = [];
   if (!ouvert(e)) return { ...bilan(e), recette: 0, arrivees };
+  // Les trois missions du jour, tirées au premier instant de chaque journée
+  if (!e.missions || e.missionsJour !== e.jour) { e.missions = tirerMissions(e, rnd); e.missionsJour = e.jour; e.missionsParfait = false; }
   for (const s of e.st) {
     if (s.panne && reparateurPresent(e)) { s.panne.auto -= dt; if (s.panne.auto <= 0) { s.panne = null; arrivees.push({ reparee: true }); } }
   }
@@ -996,7 +1004,9 @@ export function tick(e, dt, rnd = Math.random) {
     const ca = n * prixProduit(e, id) * mult;
     recette += ca; if (!p.stock) ingredients += n * p.cout;
     const t = e.journee.produits[id] || (e.journee.produits[id] = { n: 0, ca: 0 }); t.n += n; t.ca += ca;
+    for (const c of e.commandesSpe || []) if (c.produit === id && c.fait < c.quantite) c.fait = Math.min(c.quantite, c.fait + n);
   }
+  majCommandes(e, dt, rnd, arrivees);
   e.journee.remises += ventes * partFideles(e) * FIDELITE.remise * prixEffectif(e);
   e.argent += recette; e.meta.totalGagne += recette; e.meta.tasses += ventes; e.meta.clientsTotal += ventes;
   e.journee.recettes += recette; e.journee.tasses += ventes; e.journee.clients += ventes; e.journee.perdus += perdus; e.journee.viennoiseries += vienno;
@@ -1047,6 +1057,11 @@ const TESTS_SUCCES = {
   amiQuartier: e => HISTOIRES_HABITUES.every(h => amitie(e, h.id).lus >= h.chapitres.length),
   lettresMamie: e => (e.meta.courrier?.lus || 0) >= LETTRES.length,
   premierChapitre: e => Object.values(e.meta.amities || {}).some(x => x.lus >= 1),
+  coursier: e => (e.stats.commandesFaites || 0) >= 10,
+  album5: e => Object.keys(e.meta.album || {}).length >= 5,
+  albumComplet: e => VISITEURS.every(v => e.meta.album?.[v.id]),
+  collection12: e => Object.keys(e.meta.cartes || {}).length >= 12,
+  legendaire: e => Object.keys(e.meta.cartes || {}).some(id => CR[id]?.rarete === 'legendaire'),
 };
 export function verifierSucces(e) {
   const nouveaux = SUCCES.filter(s => !e.meta.succes.includes(s.id) && TESTS_SUCCES[s.id]?.(e));
@@ -1160,6 +1175,197 @@ export function aSuivre(e, auj) {
     else if (s.lus > 0) l.push({ icone: h.icone, texte: `${h.nom} : encore ${s.seuil - s.visites} visite${s.seuil - s.visites > 1 ? 's' : ''} avant le chapitre ${s.lus + 1}.` });
   }
   return l.slice(0, 4);
+}
+
+// ---------- Commandes spéciales : un client du quartier veut N produits avant un délai (en heures de service) ----------
+// La quantité suit les ventes de la veille : on y arrive en servant bien, plus vite en soignant prix, équipe et stock.
+export function nouvelleCommande(e, rnd = Math.random) {
+  const [hMin, hMax] = COMMANDES.delaiHeures, heures = hMin + Math.floor(rnd() * (hMax - hMin + 1));
+  // Ventes par heure de la veille ; on ne demande que des produits qu'on vend assez pour pouvoir réussir
+  const parHeureDe = id => { const n = e.bilans.at(-1)?.produits?.[id]?.n; return n ? n / (HORAIRES.fermeture - HORAIRES.ouverture) : (id === 'espresso' ? 6 : 0); };
+  const ids = CARTE.filter(p => produitActif(e, p.id) && parHeureDe(p.id) * heures * COMMANDES.part >= COMMANDES.min * 1.2).map(p => p.id);
+  const id = ids[Math.floor(rnd() * ids.length)] || 'espresso';
+  const parHeure = parHeureDe(id) || 6;
+  const quantite = Math.max(COMMANDES.min, Math.round(parHeure * heures * COMMANDES.part / COMMANDES.pas) * COMMANDES.pas);
+  const cl = CLIENTS_COMMANDES[Math.floor(rnd() * CLIENTS_COMMANDES.length)];
+  // La prime grandit avec le café : au moins 5 % d'une journée moyenne de recettes
+  const j = e.bilans.slice(-7), recetteJour = j.length ? j.reduce((s, b) => s + (b.recettes || 0), 0) / j.length : 0;
+  const prime = Math.max(COMMANDES.primeMin, Math.round(quantite * prixProduit(e, id) * COMMANDES.prime / 5) * 5, Math.round(recetteJour * COMMANDES.partRecette / 5) * 5);
+  e.compteurCommandes = (e.compteurCommandes || 0) + 1;
+  return { num: e.compteurCommandes, client: cl.nom, icone: cl.icone, produit: id, quantite, fait: 0, reste: heures * SPH, heures, prime, xp: COMMANDES.xp + quantite };
+}
+function majCommandes(e, dt, rnd, arrivees) {
+  e.commandesSpe ??= [];
+  for (const c of e.commandesSpe) {
+    if (c.fait >= c.quantite) {
+      c.prime = Math.round(c.prime * (1 + bonusCarte(e, 'commandes')));
+      encaisserPrime(e, c.prime); gagnerXp(e, c.xp); c.or = gagnerOr(e, OR.commande); c.finie = true;
+      e.stats.commandesFaites = (e.stats.commandesFaites || 0) + 1;
+      arrivees.push({ commandeFaite: c });
+    } else { c.reste -= dt; if (c.reste <= 0) { c.finie = true; arrivees.push({ commandeRatee: c }); } }
+  }
+  e.commandesSpe = e.commandesSpe.filter(c => !c.finie);
+  e.attenteCommande = (e.attenteCommande || 0) - dt;
+  if (e.commandesSpe.length < COMMANDES.max && e.attenteCommande <= 0 && e.horloge >= COMMANDES.depuisHeure && e.horloge < HORAIRES.fermeture - 2) {
+    const c = nouvelleCommande(e, rnd); e.commandesSpe.push(c);
+    e.attenteCommande = COMMANDES.attente * SPH;
+    arrivees.push({ nouvelleCommande: c });
+  }
+}
+
+// ---------- Pendant ton absence : si une équipe est là, le café tourne au ralenti (vraies heures, plafonnées) ----------
+export function gainsAbsence(e, secondes, rnd = Math.random) {
+  const heures = Math.min(ABSENCE.max, secondes / 3600);
+  if (!(heures >= ABSENCE.min) || e.faillite) return null;
+  const equipe = e.equipe.filter(p => !p.gerant).length;
+  if (!equipe || !e.bilans.length) return { heures, rien: true, sansEquipe: !equipe };
+  const j = e.bilans.slice(-7), moy = k => j.reduce((s, b) => s + (b[k] || 0), 0) / j.length;
+  const prevu = moy('clients') * ABSENCE.part * heures;
+  const k = consoParTasse(e) * Math.max(.05, partGrain(e, partsCarte(e, 1, true)));
+  const clients = Math.max(0, Math.min(prevu, e.stock[e.maison] / k));
+  const argent = prevu > 0 ? Math.max(0, moy('benefice')) * ABSENCE.part * heures * clients / prevu : 0;
+  return { heures, clients: Math.floor(clients), argent: Math.round(argent), grain: clients * k, plusDeGrain: clients < prevu * .99,
+    avis: PRENOMS_AVIS[Math.floor(rnd() * PRENOMS_AVIS.length)] };
+}
+export function appliquerAbsence(e, g) {
+  if (!g || g.rien) return;
+  e.stock[e.maison] = Math.max(0, e.stock[e.maison] - g.grain);
+  encaisserPrime(e, g.argent); e.meta.totalGagne += g.argent;
+  e.meta.clientsTotal += g.clients; e.meta.tasses += g.clients;
+}
+
+// ---------- Visiteurs rares : un par jour au plus, à collectionner dans l'album ----------
+export function choisirVisiteur(e, rnd = Math.random) {
+  if (e.meta.visiteJour === e.jour) return null;
+  const ok = VISITEURS.filter(v => e.rep >= (v.rep || 0) && (!v.meteo || v.meteo === e.meteo));
+  if (!ok.length) return null;
+  const neufs = ok.filter(v => !e.meta.album?.[v.id]);
+  const liste = neufs.length && rnd() < VISITE_RARE.nouveau ? neufs : ok;
+  const v = liste[Math.floor(rnd() * liste.length)];
+  e.meta.visiteJour = e.jour;
+  return { ...v, rare: true };
+}
+export function recevoirVisiteur(e, id) {
+  const v = VISITEURS.find(x => x.id === id); if (!v) return null;
+  e.meta.album = { ...(e.meta.album || {}), [id]: (e.meta.album?.[id] || 0) + 1 };
+  const c = v.cadeau;
+  if (c.argent) encaisserPrime(e, c.argent);
+  if (c.notoriete) ajouterNotoriete(e, c.notoriete);
+  if (c.avis) ajouterAvis(e, c.avis);
+  gagnerXp(e, VISITE_RARE.xp);
+  const nouveau = e.meta.album[id] === 1;
+  if (nouveau) gagnerOr(e, OR.visiteur);
+  return { visiteur: v, nouveau, total: Object.keys(e.meta.album).length };
+}
+
+// ---------- Grains d'or : la monnaie du marché (jamais achetée avec de l'argent réel) ----------
+const CR = Object.fromEntries(CARTES_COLLECTION.map(c => [c.id, c]));
+export { CR as CATALOGUE_CARTES };
+export const grainsOr = e => e.meta.grainsOr || 0;
+export function gagnerOr(e, n) {
+  if (!(n > 0)) return 0;
+  const g = Math.round(n * (1 + bonusCarte(e, 'or')));
+  e.meta.grainsOr = grainsOr(e) + g; e.meta.orTotal = (e.meta.orTotal || 0) + g;
+  return g;
+}
+
+// ---------- Les cartes : bonus selon la rareté et le niveau ; 1 emplacement, puis 2 au niveau 10 et 3 au niveau 20 ----------
+export const nbEmplacements = e => EMPLACEMENTS.filter(x => niveauCafe(e) >= x.niveau).length;
+export const carteDe = (e, id) => e.meta.cartes?.[id] || null;
+export const valeurCarte = (c, niv = 1) => c.valeur * CARTES_NIVEAUX.mult[Math.min(Math.max(1, niv), CARTES_NIVEAUX.max) - 1];
+export function bonusCarte(e, effet) {
+  return (e.meta?.cartesActives || []).reduce((s, id) => {
+    const c = CR[id], p = carteDe(e, id);
+    return s + (c && p && c.effet === effet ? valeurCarte(c, p.niv) : 0);
+  }, 0);
+}
+export function tirerCarte(caisse, rnd = Math.random) {
+  const ch = caisse.chances, total = Object.values(ch).reduce((x, y) => x + y, 0);
+  let x = rnd() * total, rarete = 'commune';
+  for (const r of Object.keys(RARETES)) { x -= ch[r] || 0; if (x < 0) { rarete = r; break; } }
+  const liste = CARTES_COLLECTION.filter(c => c.rarete === rarete);
+  return liste[Math.min(liste.length - 1, Math.floor(rnd() * liste.length))];
+}
+export function ouvrirCaisse(e, idCaisse, rnd = Math.random) {
+  const k = CAISSES.find(x => x.id === idCaisse);
+  if (!k) return { erreur: 'indispo' };
+  if (grainsOr(e) < k.prix) return { erreur: 'or' };
+  e.meta.grainsOr -= k.prix; e.meta.caissesOuvertes = (e.meta.caissesOuvertes || 0) + 1;
+  const c = tirerCarte(k, rnd);
+  e.meta.cartes = e.meta.cartes || {};
+  const p = e.meta.cartes[c.id] || (e.meta.cartes[c.id] = { niv: 1, n: 0 });
+  p.n++;
+  // Une place libre : la nouvelle carte s'active toute seule
+  const actives = e.meta.cartesActives || (e.meta.cartesActives = []);
+  let activee = false;
+  if (!actives.includes(c.id) && actives.length < nbEmplacements(e)) { actives.push(c.id); activee = true; }
+  return { carte: c, nouvelle: p.n === 1 && p.niv === 1, exemplaires: p.n, niv: p.niv, activee, fusion: peutFusionner(e, c.id) };
+}
+export const peutFusionner = (e, id) => { const p = carteDe(e, id); return !!p && p.niv < CARTES_NIVEAUX.max && p.n >= CARTES_NIVEAUX.fusion; };
+export function fusionner(e, id) {
+  if (!peutFusionner(e, id)) return 'indispo';
+  const p = carteDe(e, id); p.n -= CARTES_NIVEAUX.fusion - 1; p.niv++;
+  return 'ok';
+}
+// On garde toujours un exemplaire : on ne recycle que les doubles
+export function recycler(e, id) {
+  const p = carteDe(e, id); if (!p || p.n < 2) return 0;
+  p.n--; const g = RARETES[CR[id].rarete].recyclage;
+  e.meta.grainsOr = grainsOr(e) + g;
+  return g;
+}
+export function activerCarte(e, id) {
+  const p = carteDe(e, id); if (!p) return 'indispo';
+  const actives = e.meta.cartesActives || (e.meta.cartesActives = []);
+  if (actives.includes(id)) return 'deja';
+  if (actives.length >= nbEmplacements(e)) return 'plein';
+  actives.push(id); return 'ok';
+}
+export function desactiverCarte(e, id) { e.meta.cartesActives = (e.meta.cartesActives || []).filter(x => x !== id); return 'ok'; }
+
+// ---------- Les missions du jour : trois petits défis à chaque journée de jeu, payés en grains d'or ----------
+export function tirerMissions(e, rnd = Math.random) {
+  const hier = e.bilans.at(-1), n = x => Math.max(10, Math.round(x / 10) * 10);
+  const produits = CARTE.filter(p => p.id !== 'espresso' && produitActif(e, p.id) && (hier?.produits?.[p.id]?.n || 0) >= 8);
+  const pool = [
+    { type: 'clients', cible: n((hier?.clients || 60) * .85), texte: c => `Servir ${c} clients` },
+    { type: 'commandes', cible: hier ? 2 : 1, texte: c => `Réussir ${c} commande${c > 1 ? 's' : ''} spéciale${c > 1 ? 's' : ''}` },
+    { type: 'habitue', cible: 1, texte: () => 'Recevoir un habitué', ok: habituesDisponibles(e).length > 0 },
+    { type: 'poste', cible: 1, texte: () => 'Améliorer un poste (touche-le)' },
+    { type: 'benefice', cible: n(Math.max(50, (hier?.benefice || 0) * .8)), texte: c => `Finir la journée avec ${c} € de bénéfice`, ok: !!hier && hier.benefice > 0 },
+  ];
+  if (produits.length) { const p = produits[Math.floor(rnd() * produits.length)]; pool.push({ type: 'produit', produit: p.id, cible: Math.max(5, Math.round(hier.produits[p.id].n * .7 / 5) * 5), texte: c => `Vendre ${c} ${p.nom.toLowerCase()}` }); }
+  const dispo = pool.filter(m => m.ok !== false), choisies = [];
+  while (choisies.length < MISSIONS.nombre && dispo.length) choisies.push(dispo.splice(Math.floor(rnd() * dispo.length), 1)[0]);
+  return choisies.map((m, k) => {
+    const mi = { type: m.type, produit: m.produit, cible: m.cible, texte: m.texte(m.cible), or: OR.mission[k] || OR.mission[0], jour: e.jour, fini: false };
+    mi.base = valeurMission(e, mi);
+    return mi;
+  });
+}
+function valeurMission(e, m) {
+  switch (m.type) {
+    case 'clients': return e.journee.clients;
+    case 'commandes': return e.stats.commandesFaites || 0;
+    case 'produit': return e.journee.produits?.[m.produit]?.n || 0;
+    case 'habitue': return Object.values(e.meta.habitues || {}).reduce((s, x) => s + x, 0);
+    case 'poste': return e.st.reduce((s, x) => s + (x.niv || 1), 0);
+    case 'benefice': { const b = e.bilans.at(-1); return b && b.jour === m.jour ? b.benefice : e.journee.recettes - e.journee.depenses; }
+    default: return 0;
+  }
+}
+export const progresMission = (e, m) => Math.max(0, Math.min(m.cible, m.type === 'benefice' ? valeurMission(e, m) : valeurMission(e, m) - (m.base || 0)));
+// Vérifie les missions et le défi du jour ; renvoie les grains d'or gagnés (avec de quoi l'annoncer)
+export function verifierMissions(e) {
+  const gains = [];
+  for (const m of e.missions || []) {
+    if (m.fini) continue;
+    const fin = m.type === 'benefice' ? e.bilans.at(-1)?.jour === m.jour && e.bilans.at(-1).benefice >= m.cible : progresMission(e, m) >= m.cible;
+    if (fin) { m.fini = true; gains.push({ mission: m, or: gagnerOr(e, m.or) }); }
+  }
+  if (e.missions?.length && e.missions.every(m => m.fini) && !e.missionsParfait) { e.missionsParfait = true; gains.push({ parfait: true, or: gagnerOr(e, OR.journeeParfaite) }); }
+  if (e.defi?.fini && !e.defi.orDonne) { e.defi.orDonne = true; gains.push({ defi: e.defi, or: gagnerOr(e, OR.defi) }); }
+  return gains;
 }
 
 // ---------- Objectifs de mamie ----------

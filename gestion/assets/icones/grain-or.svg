@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Grain d'or : un grain de café doré, la monnaie du marché -->
+  <defs>
+    <linearGradient id="o" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFE98A"/><stop offset=".55" stop-color="#F5B82E"/><stop offset="1" stop-color="#C9861A"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="32" cy="33" rx="19" ry="25" transform="rotate(28 32 33)" fill="url(#o)" stroke="#8A5A12" stroke-width="3.5"/>
+  <path d="M22 16 C 34 24, 28 40, 42 50" fill="none" stroke="#8A5A12" stroke-width="3.5" stroke-linecap="round"/>
+  <ellipse cx="25" cy="23" rx="4" ry="7" transform="rotate(28 25 23)" fill="#FFF6C8" opacity=".75"/>
+  <path d="M50 8 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z" fill="#FFF3B0"/>
+</svg>

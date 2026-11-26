@@ -4,7 +4,7 @@ import { creerUI, fmt } from './ui.js';
 import { sons, ambiance } from './sons.js';
 import { plateforme } from './plateforme.js';
 import * as J from './game.js';
-import { G, STATIONS, DIFFICULTES } from './data.js';
+import { G, STATIONS, DIFFICULTES, VISITEURS } from './data.js';
 
 // Sauvegarde à part de la version idle ; le mode ?debug a la sienne, pour ne jamais toucher à la vraie partie
 const CLE = new URLSearchParams(location.search).has('debug') ? 'n15x-gestion-v1-debug' : 'n15x-gestion-v1';
@@ -23,7 +23,11 @@ let jourForce = new URLSearchParams(location.search).has('debug') ? new URLSearc
 const jourReel = () => { if (jourForce) return jourForce; const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 let auj = jourReel();
 J.initCourrier(e, auj);
-function sauver() { try { localStorage.setItem(CLE, JSON.stringify(e)); } catch { /* stockage indisponible : on joue sans sauvegarde */ } }
+// Pendant l'absence (vraies heures depuis la dernière sauvegarde) : l'équipe a peut-être tenu le café. En test : ?debug&absence=3 (heures)
+const absenceForcee = new URLSearchParams(location.search).has('debug') ? +new URLSearchParams(location.search).get('absence') || 0 : 0;
+let absence = J.gainsAbsence(e, absenceForcee ? absenceForcee * 3600 : (e.meta.vu ? (Date.now() - e.meta.vu) / 1000 : 0));
+J.appliquerAbsence(e, absence);
+function sauver() { e.meta.vu = Date.now(); try { localStorage.setItem(CLE, JSON.stringify(e)); } catch { /* stockage indisponible : on joue sans sauvegarde */ } }
 
 // ---------- Plateforme (CrazyGames, itch.io, web) ----------
 await plateforme.init();
@@ -47,6 +51,14 @@ const scene = await creerScene(document.getElementById('scene'), {
   surHabitue: (h, pos) => {
     const p = J.servirHabitue(e, h.id);
     if (!p) return;
+    // Un visiteur rare : sa phrase, son cadeau, et une nouvelle case dans l'album
+    if (h.rare) {
+      const r = J.recevoirVisiteur(e, h.id); if (!r) return;
+      ui.parole(pos, h.nom, h.phrase); sons.succes();
+      if (r.nouveau) setTimeout(() => ui.celebrer({ genre: `Nouveau dans l’album · ${r.total}/${VISITEURS.length}`, titre: `${h.icone} ${h.nom}`, texte: h.effet }), 1600);
+      else ui.toast(`${h.icone} <b>${h.nom}</b> est revenu ! ${h.effet}`, 5000);
+      sauver(); return;
+    }
     // Assez de visites, et pas encore de chapitre aujourd'hui : l'habitué raconte la suite de son histoire
     const hist = J.chapitrePret(e, h.id, auj);
     const libre = document.getElementById('papier').hidden && document.getElementById('bulle').hidden && document.getElementById('fete').hidden;
@@ -90,9 +102,15 @@ scene.majDecor(e);
 const sacsVisibles = c => Math.max(1, Math.min(6, Math.round(c.sacs / 5)));
 
 // Onglet masqué : on met en pause (un jeu de gestion n'avance pas sans toi)
+// … sauf si l'équipe le tient pendant que tu es ailleurs : au retour sur l'onglet, on compte les vraies heures passées
+let quitteA = 0;
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { sauver(); plateforme.jeuPause(); return; }
+  if (document.hidden) { quitteA = Date.now(); sauver(); plateforme.jeuPause(); return; }
   if (enJeu) plateforme.jeuDebut();
+  if (quitteA && enJeu) {
+    const g = J.gainsAbsence(e, (Date.now() - quitteA) / 1000); quitteA = 0;
+    if (g && !g.rien) { J.appliquerAbsence(e, g); sauver(); ui.afficherAbsence(g); }
+  }
 });
 setInterval(sauver, 5000);
 addEventListener('pagehide', sauver);
@@ -151,6 +169,9 @@ function image(dt) {
     if (ar.plusDeLait) ui.toast('<b>Plus de lait !</b> Plus de cappuccinos : les clients reprennent des espressos. Commande du lait dans la Réserve.', 5500);
     if (ar.defiReussi) { sons.succes(); ui.toast(`⚡ Défi du jour réussi : <b>${ar.defiReussi.texte}</b> · +${fmt(ar.defiReussi.prime)}`, 5000); }
     if (ar.defiRate) ui.toast(`Défi du jour raté : ${ar.defiRate.texte}. Demain, un autre !`, 4500);
+    if (ar.commandeFaite) { const c = ar.commandeFaite; sons.succes(); ui.toast(`${c.icone} <b>Commande livrée</b> pour ${c.client.charAt(0).toLowerCase() + c.client.slice(1)} : <b>+${fmt(c.prime)}</b>, ${c.xp} XP et ${c.or} grains d’or !`, 4500); }
+    if (ar.commandeRatee) ui.toast(`${ar.commandeRatee.icone} ${ar.commandeRatee.client} n’a pas pu attendre. Une autre commande arrivera bientôt.`, 4000);
+    if (ar.nouvelleCommande) sons.bulle?.();
     if (ar.repli) ui.toast(`Plus de grain servi : on passe au <b>${G[ar.repli].nom}</b>. Vérifie ton prix !`, 5500);
     if (ar.reparee) ui.toast('Ton barista a réparé la panne.', 3000);
   }
@@ -167,6 +188,12 @@ function image(dt) {
     const obj = lecture ? null : J.verifierObjectif(e); if (obj) { ui.objectifAtteint(obj); plateforme.joie(); }
     if (!lecture) J.verifierSucces(e).forEach(s => ui.celebrer({ genre: 'Nouveau succès', titre: s.nom, texte: s.desc }));
     if (!lecture) J.verifierNiveau(e).forEach(n => { ui.celebrerNiveau(n); plateforme.joie(); });
+    // Missions du jour et défi : des grains d'or pour le marché
+    for (const g of J.verifierMissions(e)) {
+      if (g.mission) { sons.succes(); ui.toast(`🏅 <b>Mission réussie</b> : ${g.mission.texte} · <b>+${g.or}</b> grains d’or`, 4500); }
+      if (g.parfait) ui.celebrer({ genre: 'Journée parfaite', titre: '3 missions sur 3 !', texte: `+${g.or} grains d’or en bonus. Va voir le marché !` });
+      if (g.defi) setTimeout(() => ui.toast(`⚡ Défi du jour : <b>+${g.or}</b> grains d’or`, 3500), 2500);
+    }
     if (!lecture && document.getElementById('bulle').hidden) { const h = J.verifierHistoire(e); if (h) { ui.bulle(h.texte, { titre: h.titre }); scene.majDecor(e); } }
   }
   // Pour la 3D : le personnel présent apparaît à son poste (ces champs ne servent qu'au dessin)
@@ -219,9 +246,12 @@ if (!params.has('debug') || params.has('accueil')) {
     if (!dejaJoue) J.reglerDifficulte(e, mode);
     if (nouveau) { e.meta.nomCafe = J.nettoyerNom(champ.value) || J.NOM_PAR_DEFAUT; scene.majDecor(e); sauver(); champ.blur(); }
     acc.classList.add('part'); setTimeout(() => { acc.hidden = true; }, 450); sons.clic(); enJeu = true; plateforme.jeuDebut();
-    if (J.courrierDispo(e, auj)) setTimeout(() => ui.toast('✉️ <b>Une lettre de mamie t’attend !</b> Touche l’enveloppe pour l’ouvrir.', 5500), 900);
+    if (absence && !absence.rien) setTimeout(() => ui.afficherAbsence(absence), 700);
+    else if (absence?.sansEquipe && absence.heures >= 1) setTimeout(() => ui.toast('Le café est resté fermé pendant ton absence. <b>Embauche quelqu’un</b> : ton équipe le fera tourner quand tu n’es pas là.', 6500), 1200);
+    if (J.courrierDispo(e, auj)) setTimeout(() => ui.toast('✉️ <b>Une lettre de mamie t’attend !</b> Touche l’enveloppe pour l’ouvrir.', 5500), absence && !absence.rien ? 2500 : 900);
+    absence = null;
   };
-} else { enJeu = true; plateforme.jeuDebut(); }
+} else { enJeu = true; plateforme.jeuDebut(); if (absence && !absence.rien) setTimeout(() => ui.afficherAbsence(absence), 700); }
 if (!window.PLATEFORME && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('sw.js').catch(() => { /* pas grave : le jeu marche sans */ });
 }

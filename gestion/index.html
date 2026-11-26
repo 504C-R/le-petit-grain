@@ -68,6 +68,7 @@
   <div class="puces" id="puces"></div>
   <div class="objectif" id="objectif" hidden><span class="cible">🎯</span><span id="obj-txt"></span><b id="obj-prime"></b></div>
   <div class="defi" id="defi" hidden><span class="d-ico">⚡</span><div class="d-corps"><span id="defi-txt"></span><div class="d-barre"><i id="defi-barre"></i></div></div><b id="defi-prime"></b></div>
+  <div class="commandes" id="commandes" hidden></div>
   <!-- Les notifications s'affichent en haut, sous l'objectif : elles ne cachent jamais les boutons et ne captent pas le doigt -->
   <div id="toast" class="cache" aria-live="polite"></div>
 </div>
@@ -146,6 +147,8 @@
     <div class="cn" id="c-niveau"></div>
     <h5>Les habitués</h5>
     <div class="amities" id="c-amities"></div>
+    <h5>Album des visiteurs <small id="c-nb-album"></small></h5>
+    <div class="album" id="c-album"></div>
     <h5>Courrier de mamie <small id="c-nb-lettres"></small></h5>
     <div class="histoire" id="c-lettres"></div>
     <h5>Souvenirs</h5>
@@ -158,6 +161,16 @@
     <button class="lien" id="c-reset">Recommencer une partie de zéro</button>
   </div>
 
+  <div class="panneau" id="p-marche" hidden>
+    <div class="tete">
+      <div><h3>Le marché</h3><p class="desc">Tes grains d’or : <b id="m-or">0</b>. Ils se gagnent en jouant (missions, commandes, niveaux), jamais avec de l’argent réel.</p></div>
+      <button class="fermer" data-fermer aria-label="Fermer">✕</button>
+    </div>
+    <div class="onglets-marche" id="m-onglets"><button data-om="defis">Défis du jour</button><button data-om="caisses">Caisses</button><button data-om="cartes">Mes cartes</button></div>
+    <div id="m-liste"></div>
+  </div>
+
+  <button class="b-marche" id="b-marche" aria-label="Le marché"><img src="assets/icones/grain-or.svg" alt=""><b id="b-marche-or">0</b><span>Marché</span></button>
   <button class="b-courrier" id="b-courrier" hidden aria-label="Une lettre t’attend"><img src="assets/icones/lettre.svg" alt=""><span>Courrier</span></button>
   <div class="boutons nav">
     <button class="btn vert" id="b-stock">Réserve<small id="b-stock-txt">grains</small></button>
@@ -169,6 +182,14 @@
 </div>
 
 <div id="fete" hidden><div class="fete-rayons"></div><div class="confettis" id="confettis"></div><div class="fete-carte"><img class="fete-icone" id="fete-icone" src="assets/icones/etoile.svg" alt=""><small id="fete-genre"></small><h2 id="fete-titre"></h2><p id="fete-texte"></p><b class="fete-prime" id="fete-prime"></b><button class="btn vert" id="fete-ok">Super !</button></div></div>
+<div id="roulette" hidden>
+  <div class="rl-boite">
+    <div class="rl-titre" id="rl-titre">Caisse en carton</div>
+    <div class="rl-fenetre"><div class="rl-bande" id="rl-bande"></div><i class="rl-repere"></i></div>
+    <div class="rl-resultat" id="rl-resultat" hidden></div>
+    <div class="boutons rl-boutons" id="rl-boutons" hidden><button class="btn vert" id="rl-ok">Super !</button><button class="btn" id="rl-encore">Encore une</button></div>
+  </div>
+</div>
 <div id="papier" hidden><div class="papier"><div id="papier-contenu"></div><button class="btn" id="papier-fermer">Refermer</button></div></div>
 
 <div id="bulle" hidden>

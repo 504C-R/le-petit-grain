@@ -2,7 +2,8 @@
 import * as J from './game.js';
 import { sons, regleSon, regleMusique } from './sons.js';
 import { STATIONS, GRAINS, G, TRAVAUX, T, SUCCES, HISTOIRE, MOTS_TRAVAUX, DOSES_SAC, LAIT, MOMENTS, TARIFS, MURS, SOLS, STYLES, FORMULES,
-  PERSONNEL, ROLES, PRETS, MOIS, DECOUVERT, VIENNOISERIES, CARTE, MARKETING, FIDELITE, HISTOIRES_HABITUES, HABITUES, LETTRES, NIVEAUX_POSTES, DEBLOCAGES } from './data.js';
+  PERSONNEL, ROLES, PRETS, MOIS, DECOUVERT, VIENNOISERIES, CARTE, MARKETING, FIDELITE, HISTOIRES_HABITUES, HABITUES, LETTRES, NIVEAUX_POSTES, DEBLOCAGES, VISITEURS,
+  OR, RARETES, CARTES, CAISSES, CARTES_NIVEAUX, EMPLACEMENTS, EFFETS_CARTES } from './data.js';
 const heureTexte = h => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.floor((h % 1) * 60)).padStart(2, '0')}`;
 
 export function fmt(n) {
@@ -16,7 +17,7 @@ export function fmt(n) {
 export const virg = (n, d = 1) => n.toFixed(d).replace('.', ',');
 const kg = doses => virg(doses / DOSES_SAC, doses / DOSES_SAC < 10 ? 1 : 0) + ' kg';
 const $ = id => document.getElementById(id);
-const PANNEAUX = ['fiche', 'p-stock', 'p-prix', 'p-travaux', 'p-carnet'];
+const PANNEAUX = ['fiche', 'p-stock', 'p-prix', 'p-travaux', 'p-carnet', 'p-marche'];
 const ICONES_ROLE = { barista: '☕', salle: '🍽️', cuisine: '🥐' };
 const ICONES_MOMENTS = ['🌅', '☀️', '🌤️', '🌇'];
 const COURTS_MOMENTS = ['Matin', 'Midi', 'Aprèm', 'Soir'];
@@ -64,10 +65,101 @@ export function creerUI({ jeu, scene }) {
   // ---------- Le papier : la Gazette du quartier et le bilan de l'année, mis en page comme un journal ----------
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   function ouvrirPapier(html) { $('papier-contenu').innerHTML = html; $('papier').hidden = false; $('papier').scrollTop = 0; sons.bulle(); }
-  $('papier-fermer').onclick = () => {
-    $('papier').hidden = true; sons.clic();
-    if (vitesseAvantLecture !== null) { if (jeu.vitesse === 0) { jeu.vitesse = vitesseAvantLecture || 1; majVitesse(); } vitesseAvantLecture = null; }
-  };
+  const reprendre = () => { if (vitesseAvantLecture !== null) { if (jeu.vitesse === 0) { jeu.vitesse = vitesseAvantLecture || 1; majVitesse(); } vitesseAvantLecture = null; } };
+  $('papier-fermer').onclick = () => { $('papier').hidden = true; sons.clic(); reprendre(); };
+  // ---------- Le marché : défis du jour, caisses, cartes ----------
+  let ongletMarche = 'defis';
+  const pourcent = x => `${x >= 0 ? '+' : ''}${Math.round(x * 100)} %`;
+  const texteBonus = (c, niv) => `${pourcent((c.effet === 'grain' || c.effet === 'loyer' ? -1 : 1) * J.valeurCarte(c, niv))} ${EFFETS_CARTES[c.effet]}`;
+  function carteHtml(c, p, actif, actions = true) {
+    const r = RARETES[c.rarete];
+    if (!p) return `<div class="ccarte inconnue" style="--rarete:${r.couleur}"><span class="cc-ico">❔</span><b>???</b><small>${r.nom}</small></div>`;
+    const etoiles = '★'.repeat(p.niv) + '☆'.repeat(CARTES_NIVEAUX.max - p.niv);
+    const btns = !actions ? '' : `<div class="cc-btns">${actif ? `<button data-retirer="${c.id}">Retirer</button>` : `<button class="vert" data-activer="${c.id}">Activer</button>`}`
+      + (J.peutFusionner(E(), c.id) ? `<button class="or" data-fusion="${c.id}">Fusionner ×${CARTES_NIVEAUX.fusion}</button>` : '')
+      + (p.n >= 2 ? `<button data-recycler="${c.id}">Recycler +${r.recyclage}</button>` : '') + `</div>`;
+    return `<div class="ccarte${actif ? ' active' : ''}" style="--rarete:${r.couleur}"><span class="cc-rar">${r.nom}</span><span class="cc-ico">${c.icone}</span><b>${c.nom}</b>
+      <small class="cc-bonus">${texteBonus(c, p.niv)}</small><span class="cc-niv">${etoiles}${p.n > 1 ? ` · ×${p.n}` : ''}</span>${btns}</div>`;
+  }
+  function majMarche() {
+    const e = E(); $('m-or').textContent = J.grainsOr(e);
+    document.querySelectorAll('#m-onglets [data-om]').forEach(b => b.classList.toggle('actif', b.dataset.om === ongletMarche));
+    let h = '';
+    if (ongletMarche === 'defis') {
+      const ms = e.missions || [];
+      h = `<p class="legende">Trois missions à chaque journée. Les trois réussies : <b>+${OR.journeeParfaite}</b> grains d’or en bonus. Le défi du jour en rapporte aussi.</p>`
+        + (ms.length ? ms.map(m => { const pr = J.progresMission(e, m), pc = m.fini ? 1 : Math.min(1, pr / Math.max(1, m.cible));
+          return `<div class="mission${m.fini ? ' fini' : ''}"><span class="mi-ico">${m.fini ? '✅' : '🏅'}</span><div><b>${esc(m.texte)}</b><span class="nd-barre"><i style="width:${pc * 100}%"></i></span>
+            <small>${m.fini ? 'Réussie !' : m.type === 'benefice' ? 'Vérifié à la fermeture' : `${Math.floor(pr).toLocaleString('fr-FR')} / ${m.cible.toLocaleString('fr-FR')}`}</small></div><em><img src="assets/icones/grain-or.svg" alt="">${m.or}</em></div>`; }).join('')
+          : '<p class="desc">Les missions arrivent à l’ouverture du café.</p>')
+        + (e.defi ? `<div class="mission${e.defi.fini ? ' fini' : ''}"><span class="mi-ico">⚡</span><div><b>Défi du jour : ${esc(e.defi.texte)}</b><small>${e.defi.fini ? 'Réussi !' : e.defi.rate ? 'Raté' : 'En cours'}</small></div><em><img src="assets/icones/grain-or.svg" alt="">${OR.defi}</em></div>` : '');
+    } else if (ongletMarche === 'caisses') {
+      h = `<p class="legende">Chaque caisse contient une carte. Les chances sont affichées : plus la caisse est chère, plus les cartes rares sortent.</p>`
+        + CAISSES.map(k => `<div class="caisse"><span class="ca-ico">${k.icone}</span><div><b>${k.nom}</b><div class="ca-chances">${Object.keys(RARETES).filter(r => k.chances[r]).map(r => `<span style="--rarete:${RARETES[r].couleur}">${RARETES[r].nom} ${k.chances[r]} %</span>`).join('')}</div></div>
+          <button class="btn mini or${J.grainsOr(e) < k.prix ? ' off' : ''}" data-caisse="${k.id}"><img src="assets/icones/grain-or.svg" alt="">${k.prix}</button></div>`).join('');
+    } else {
+      const n = J.nbEmplacements(e), actives = e.meta.cartesActives || [];
+      const emp = EMPLACEMENTS.map((x, k) => k < n ? (actives[k] ? `<div class="emp plein" style="--rarete:${RARETES[J.CATALOGUE_CARTES[actives[k]].rarete].couleur}"><span>${J.CATALOGUE_CARTES[actives[k]].icone}</span><small>${texteBonus(J.CATALOGUE_CARTES[actives[k]], J.carteDe(e, actives[k]).niv)}</small></div>` : '<div class="emp"><span>＋</span><small>Emplacement libre</small></div>')
+        : `<div class="emp verrou"><span>🔒</span><small>Niveau ${x.niveau}</small></div>`).join('');
+      const possedees = Object.keys(e.meta.cartes || {}).length;
+      h = `<div class="section-titre">Cartes actives (${actives.length}/${n})</div><div class="emplacements">${emp}</div>
+        <div class="section-titre">Collection ${possedees}/${CARTES.length}</div><p class="legende">${CARTES_NIVEAUX.fusion} cartes identiques fusionnent en une carte plus forte (★★, puis ★★★). Les doubles se recyclent en grains d’or.</p>
+        <div class="collection">${[...CARTES].sort((x, y) => !!J.carteDe(e, y.id) - !!J.carteDe(e, x.id)).map(c => carteHtml(c, J.carteDe(e, c.id), actives.includes(c.id))).join('')}</div>`;
+    }
+    $('m-liste').innerHTML = h;
+  }
+  $('m-onglets').addEventListener('click', ev => { const b = ev.target.closest('[data-om]'); if (b) { ongletMarche = b.dataset.om; sons.clic(); majMarche(); } });
+  $('m-liste').addEventListener('click', ev => {
+    const b = ev.target.closest('button'); if (!b) return;
+    const e = E(), d = b.dataset;
+    if (d.caisse) return lancerRoulette(d.caisse);
+    if (d.activer) { const r = J.activerCarte(e, d.activer); if (r === 'plein') toast(`Tous tes emplacements sont pris : retire d’abord une carte. Un emplacement de plus au niveau ${EMPLACEMENTS[J.nbEmplacements(e)]?.niveau || '—'} du café.`, 5000); else sons.achat(); }
+    if (d.retirer) { J.desactiverCarte(e, d.retirer); sons.clic(); }
+    if (d.fusion && J.fusionner(e, d.fusion) === 'ok') { const c = J.CATALOGUE_CARTES[d.fusion]; celebrer({ genre: 'Fusion réussie', titre: `${c.icone} ${c.nom}`, texte: `Niveau ${J.carteDe(e, d.fusion).niv} : ${texteBonus(c, J.carteDe(e, d.fusion).niv)}.` }); }
+    if (d.recycler) { const g = J.recycler(e, d.recycler); if (g) { sons.tinte(); toast(`Carte recyclée : <b>+${g}</b> grains d’or.`); } }
+    jeu.sauver(); majMarche();
+  });
+  // ---------- La roulette façon caisse : une bande de cartes défile, ralentit et s'arrête sur la carte gagnée ----------
+  let caisseEnCours = null;
+  function lancerRoulette(id) {
+    const e = E(), k = CAISSES.find(x => x.id === id);
+    const r = J.ouvrirCaisse(e, id);
+    if (r.erreur === 'or') return toast(`Il te faut <b>${k.prix}</b> grains d’or. Fais les missions du jour, les commandes spéciales, monte de niveau…`, 5000);
+    if (r.erreur) return;
+    jeu.sauver(); caisseEnCours = id; pauserPourLire(); sons.clic();
+    const N = 46, GAGNANT = 38, LARGE = 104, ECART = 8;
+    const bande = Array.from({ length: N }, (_, i) => i === GAGNANT ? r.carte : J.tirerCarte(k, Math.random));
+    $('rl-titre').textContent = `${k.icone} ${k.nom}`;
+    $('rl-bande').innerHTML = bande.map(c => `<div class="rl-carte" style="--rarete:${RARETES[c.rarete].couleur}"><span>${c.icone}</span><small>${c.nom}</small></div>`).join('');
+    $('rl-resultat').hidden = true; $('rl-boutons').hidden = true;
+    const bandeEl = $('rl-bande'); bandeEl.style.transition = 'none'; bandeEl.style.transform = 'translateX(0)';
+    $('roulette').hidden = false;
+    const largeurFenetre = bandeEl.parentElement.clientWidth;
+    const cible = GAGNANT * (LARGE + ECART) - (largeurFenetre / 2 - LARGE / 2) + (Math.random() - .5) * (LARGE * .7);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      bandeEl.style.transition = 'transform 5.2s cubic-bezier(.08,.62,.1,1)';
+      bandeEl.style.transform = `translateX(${-cible}px)`;
+    }));
+    // Le « tic » de chaque carte qui passe sous le repère
+    let dernier = -1; const t0 = performance.now();
+    const tic = () => {
+      const m = new DOMMatrixReadOnly(getComputedStyle(bandeEl).transform), x = -m.m41 + largeurFenetre / 2, idx = Math.floor(x / (LARGE + ECART));
+      if (idx !== dernier) { dernier = idx; sons.clic(); }
+      if (performance.now() - t0 < 5300) requestAnimationFrame(tic);
+    };
+    requestAnimationFrame(tic);
+    setTimeout(() => {
+      const c = r.carte, rar = RARETES[c.rarete];
+      bandeEl.children[GAGNANT].classList.add('gagnant');
+      $('rl-resultat').innerHTML = `<div class="rl-gagne" style="--rarete:${rar.couleur}"><span class="rl-rar">${rar.nom}</span><span class="rl-ico">${c.icone}</span><b>${c.nom}</b><small>${texteBonus(c, r.niv)}</small></div>
+        <p>${r.nouvelle ? 'Nouvelle carte !' : r.fusion ? `Tu en as ${r.exemplaires} : tu peux la <b>fusionner</b> !` : `Doublon : ${r.exemplaires}/${CARTES_NIVEAUX.fusion} pour fusionner.`}${r.activee ? ' Elle est déjà active.' : ''}</p>`;
+      $('rl-resultat').hidden = false; $('rl-boutons').hidden = false;
+      $('rl-encore').hidden = J.grainsOr(E()) < k.prix;
+      c.rarete === 'legendaire' || c.rarete === 'epique' ? sons.succes() : sons.tinte();
+    }, 5400);
+  }
+  $('rl-ok').onclick = () => { $('roulette').hidden = true; sons.clic(); reprendre(); majMarche(); };
+  $('rl-encore').onclick = () => { $('roulette').hidden = true; reprendre(); if (caisseEnCours) lancerRoulette(caisseEnCours); };
   // ---------- Revenir le lendemain : le courrier de mamie et les histoires des habitués ----------
   // On lit tranquille : le jeu se met en pause le temps de la lettre ou du chapitre
   let vitesseAvantLecture = null;
@@ -88,6 +180,35 @@ export function creerUI({ jeu, scene }) {
     if (l.gains.some(g => g.startsWith('Nouveau mur'))) scene.majDecor(E());
   }
   $('b-courrier').onclick = ouvrirCourrier;
+  // ---------- Commandes spéciales : trois petits tickets sous l'objectif ----------
+  let dernierCommandes = '';
+  function majCommandes(e) {
+    const cs = e.commandesSpe || [];
+    const html = cs.map(c => {
+      const p = J.CATALOGUE_CARTE[c.produit], part = Math.min(1, c.fait / c.quantite);
+      return `<button class="cmd${part >= 1 ? ' fini' : ''}" data-cmd="${c.num}"><span class="cmd-ico">${c.icone}</span><span class="cmd-prod">${p?.icone || '☕'}</span>`
+        + `<span class="cmd-txt">${Math.floor(c.fait)}/${c.quantite}</span><i style="width:${(part * 100).toFixed(0)}%"></i></button>`;
+    }).join('');
+    if (html !== dernierCommandes) { $('commandes').innerHTML = html; dernierCommandes = html; }
+    $('commandes').hidden = !cs.length;
+  }
+  $('commandes').addEventListener('click', ev => {
+    const b = ev.target.closest('[data-cmd]'); if (!b) return;
+    const c = (E().commandesSpe || []).find(x => x.num === +b.dataset.cmd); if (!c) return;
+    const p = J.CATALOGUE_CARTE[c.produit], h = Math.max(0, c.reste / 30);
+    toast(`${c.icone} <b>${esc(c.client)}</b> veut <b>${c.quantite} ${p.nom.toLowerCase()}</b> · déjà ${Math.floor(c.fait)} · encore ${virg(h)} h de service · prime <b>+${fmt(c.prime)}</b> et ${c.xp} XP. Des prix doux, du stock et une bonne équipe aident !`, 6500);
+    sons.clic();
+  });
+  // ---------- Pendant ton absence : ce que l'équipe a fait ----------
+  function afficherAbsence(g) {
+    pauserPourLire();
+    const h = g.heures >= 1 ? `${virg(g.heures)} h` : `${Math.round(g.heures * 60)} min`;
+    ouvrirPapier(`<div class="gz-tete"><span>Pendant ton absence · ${h}</span><h2>Ton équipe a tenu le café</h2><span>${esc(J.nomCafe(E()))}</span></div>
+      <div class="absence"><div><b>${g.clients.toLocaleString('fr-FR')}</b><small>clients servis</small></div><div><b>+${fmt(g.argent)}</b><small>de bénéfice</small></div></div>
+      <p class="absence-avis">« Votre équipe a été adorable, on reviendra ! » — ${esc(g.avis)}</p>
+      ${g.plusDeGrain ? '<p class="alerte">La réserve de grain s’est vidée pendant ton absence : pense à commander.</p>' : ''}
+      <p class="legende">Ton équipe garde le café ouvert jusqu’à ${4} h quand tu n’es pas là, au ralenti. Plus elle est grande, plus tu gagnes.</p>`);
+  }
   function afficherChapitre(h, n, titre, texte, gains, relu) {
     pauserPourLire();
     const final = n >= h.chapitres.length;
@@ -133,7 +254,7 @@ export function creerUI({ jeu, scene }) {
     document.querySelectorAll('.fiche-client').forEach(x => x.remove());
     const [x, y] = scene.projeter(pos);
     const el = document.createElement('div'); el.className = 'fiche-client';
-    const qui = p.habitue ? 'Un habitué du café' : `${p.age} ans · ${p.metier}`;
+    const qui = p.rare ? `✨ ${p.metier}` : p.habitue ? 'Un habitué du café' : `${p.age} ans · ${p.metier}`;
     const etat = p.parti ? 'Reparti sans être servi' : p.servi ? `A pris : ${p.commande.join(', ')}` : `Attend : ${p.commande.join(', ')}`;
     el.innerHTML = '<b></b><small></small><span class="cmd"></span><i></i>';
     el.querySelector('b').textContent = p.nom; el.querySelector('small').textContent = qui;
@@ -176,6 +297,7 @@ export function creerUI({ jeu, scene }) {
   $('b-prix').onclick = basculer('p-prix', () => { $('x-curseur').value = E().prix; $('x-dose').value = E().dosage; majPrix(); });
   $('b-travaux').onclick = basculer('p-travaux', majTravaux);
   $('b-carnet').onclick = basculer('p-carnet', majCarnet);
+  $('b-marche').onclick = basculer('p-marche', majMarche);
   $('x-curseur').oninput = ev => { J.reglerPrix(E(), +ev.target.value); majPrix(); };
   $('x-dose').oninput = ev => { J.reglerDosage(E(), +ev.target.value); majPrix(); };
 
@@ -222,7 +344,8 @@ export function creerUI({ jeu, scene }) {
   const nomDeblocage = d => [d.mur && `mur « ${J.CATALOGUE_MURS[d.mur].nom} »`, d.sol && `sol « ${J.CATALOGUE_SOLS[d.sol].nom} »`, d.travaux && T[d.travaux].nom].filter(Boolean).join(', ');
   function celebrerNiveau(n) {
     const deb = n.debloque ? `Débloqué : ${nomDeblocage(n.debloque)}. ` : '';
-    celebrer({ genre: n.coffre ? 'Niveau supérieur · coffre !' : 'Niveau supérieur', titre: `Niveau ${n.niveau}`, texte: `${deb}Tes postes peuvent monter jusqu’au niveau ${n.nivMaxPoste}.`, prime: n.prime });
+    const emp = n.emplacement ? ' Nouvel emplacement de carte au marché !' : '';
+    celebrer({ genre: n.coffre ? 'Niveau supérieur · coffre !' : 'Niveau supérieur', titre: `Niveau ${n.niveau}`, texte: `${deb}Tes postes peuvent monter jusqu’au niveau ${n.nivMaxPoste}. +${n.or} grains d’or.${emp}`, prime: n.prime });
   }
   $('niveau-cafe').onclick = () => {
     const p = J.progresNiveau(E()), d = J.prochainDeblocage(E());
@@ -798,6 +921,12 @@ export function creerUI({ jeu, scene }) {
       return `<div class="amitie${venu ? '' : ' inconnu'}"><span class="am-ico">${venu ? h.icone : '❔'}</span><div class="am-corps"><b>${venu ? h.nom : 'Un habitué à rencontrer'}</b>${coeurs(s.lus, h.chapitres.length)}<small>${etat}</small>
         ${s.lus ? `<div class="am-relire">${h.chapitres.slice(0, s.lus).map((c, k) => `<button data-chap="${h.id}:${k}">${k + 1}. ${c.titre}</button>`).join('')}</div>` : ''}</div></div>`;
     }).join('');
+    // L'album des visiteurs rares : les cases vides donnent un indice
+    const vus = VISITEURS.filter(v => m.album?.[v.id]).length;
+    $('c-nb-album').textContent = `${vus}/${VISITEURS.length}`;
+    $('c-album').innerHTML = [...VISITEURS].sort((x, y) => !!m.album?.[y.id] - !!m.album?.[x.id]).map(v => m.album?.[v.id]
+      ? `<div class="av oui"><span>${v.icone}</span><b>${v.nom}</b><small>${v.effet}${m.album[v.id] > 1 ? ` · venu ${m.album[v.id]} fois` : ''}</small></div>`
+      : `<div class="av"><span>❔</span><b>???</b><small>${v.meteo === 'pluie' ? 'Passe parfois les jours de pluie…' : v.meteo === 'froid' ? 'Passe parfois quand il fait très froid…' : v.rep > e.rep ? `Viendra quand ta note atteindra ${virg(v.rep)} ★` : 'Peut passer n’importe quel jour…'}</small></div>`).join('');
     const lus = Math.min(m.courrier?.lus || 0, LETTRES.length);
     $('c-nb-lettres').textContent = `${lus}/${LETTRES.length}`;
     $('c-lettres').innerHTML = LETTRES.slice(0, lus).map((l, k) => `<button data-lettre="${k}">${l.titre}</button>`).join('')
@@ -920,6 +1049,8 @@ export function creerUI({ jeu, scene }) {
     const maintenant = performance.now();
     if (e.argent > dernierArgent + .5 && maintenant - dernierPulse > 500) { dernierPulse = maintenant; const a = $('argent'); a.classList.remove('gain'); void a.offsetWidth; a.classList.add('gain'); }
     dernierArgent = e.argent;
+    $('b-marche-or').textContent = J.grainsOr(e);
+    $('b-marche').classList.toggle('pret', J.grainsOr(e) >= CAISSES[0].prix);
     const pn = J.progresNiveau(e);
     $('nc-num').textContent = pn.niveau; $('nc-barre').style.width = (pn.part * 100).toFixed(1) + '%';
     // L'en-tête d'un gérant : l'heure et la date, puis l'affluence en mots simples (pas d'euros qui défilent)
@@ -958,6 +1089,7 @@ export function creerUI({ jeu, scene }) {
         $('defi').className = 'defi' + (d.fini ? ' fini' : d.rate ? ' rate' : '');
       }
       if (o) { $('obj-txt').textContent = o.texte; $('obj-prime').textContent = o.prime ? '+' + fmt(J.primeObjectif(e, o)) : ''; }
+      majCommandes(e);
       $('nom').textContent = `${J.nomCafe(e)} · ${J.nomVille(e)}`;
       $('etoiles').innerHTML = etoilesTxt(e.rep);
       let puces = '';
@@ -989,7 +1121,7 @@ export function creerUI({ jeu, scene }) {
       }
     }
     accPanneau += dt;
-    if (accPanneau > 1) { accPanneau = 0; if (ouvert === 'p-stock') majStock(); if (ouvert === 'p-travaux') majTravaux(); if (ouvert === 'p-carnet') majCarnet(); }
+    if (accPanneau > 1) { accPanneau = 0; if (ouvert === 'p-stock') majStock(); if (ouvert === 'p-travaux') majTravaux(); if (ouvert === 'p-carnet') majCarnet(); if (ouvert === 'p-marche' && ongletMarche === 'defis') majMarche(); }
   }
 
   function objectifAtteint(o) {
@@ -1040,5 +1172,5 @@ export function creerUI({ jeu, scene }) {
       b.onclick = () => { const msg = J.choisirDecision(E(), k); if (msg) toast(msg, 5000); sons.clic(); jeu.sauver(); majDecision(E()); }; z.appendChild(b); });
   }
   function ouvrirJournal(o) { if (o) onglet = o; ouvrir('p-travaux'); majTravaux(); }
-  return { maj, toast, bulle, pop, parole, humeur, ficheClient, annoncerGazette, afficherGazette, afficherAnnee, celebrer, celebrerNiveau, majCourrier, raconter, fermer, toucherStation, objectifAtteint, finJournee, ouvrirJournal, majVitesse, tutoriel };
+  return { maj, toast, bulle, pop, parole, humeur, ficheClient, annoncerGazette, afficherGazette, afficherAnnee, celebrer, celebrerNiveau, majCourrier, raconter, afficherAbsence, fermer, toucherStation, objectifAtteint, finJournee, ouvrirJournal, majVitesse, tutoriel };
 }

@@ -239,6 +239,11 @@ export const SUCCES = [
   { id: 'premierChapitre', nom: 'Une histoire commence', desc: 'Écouter le premier chapitre de l’histoire d’un habitué.' },
   { id: 'lettresMamie', nom: 'Le secret de mamie', desc: 'Lire les 7 lettres de mamie.' },
   { id: 'amiQuartier', nom: 'L’ami du quartier', desc: 'Connaître toute l’histoire des 4 habitués.' },
+  { id: 'coursier', nom: 'Toujours à l’heure', desc: 'Réussir 10 commandes spéciales.' },
+  { id: 'album5', nom: 'Les beaux visiteurs', desc: 'Recevoir 5 visiteurs rares différents.' },
+  { id: 'albumComplet', nom: 'L’album complet', desc: 'Recevoir les 10 visiteurs rares.' },
+  { id: 'collection12', nom: 'Le collectionneur', desc: 'Posséder 12 cartes différentes.' },
+  { id: 'legendaire', nom: 'Une carte de légende', desc: 'Obtenir une carte légendaire.' },
 ];
 
 // Récit minimal : un message de mamie aux grandes étapes
@@ -449,6 +454,96 @@ export const DEBLOCAGES = [
 // Le niveau maximum d'un poste suit le niveau du café : départ + 2 par niveau du café.
 export const NIVEAUX_POSTES = { couts: [60, 90, 120, 100], croissance: 1.16, gain: .02, palier: 10, bonusPalier: .1, depart: 4, parNiveauCafe: 2, max: 50,
   effets: ['de place dans la réserve', 'de vitesse au moulin', 'de tasses par heure au bar', 'de service en salle'] };
+
+// =================== Commandes spéciales, absence, visiteurs rares ===================
+// Les commandes spéciales : trois à la fois, un client du quartier veut N produits dans un délai (en heures de service)
+export const COMMANDES = { max: 3, delaiHeures: [3, 6], part: .65, min: 5, pas: 5, prime: .7, primeMin: 20, partRecette: .05, xp: 30, attente: 1.5, depuisHeure: 8 };
+export const CLIENTS_COMMANDES = [
+  { nom: 'Le bureau d’en face', icone: '🏢' }, { nom: 'L’école de danse', icone: '🩰' }, { nom: 'Le cabinet médical', icone: '🩺' },
+  { nom: 'La caserne des pompiers', icone: '🚒' }, { nom: 'Un tournage de film', icone: '🎬' }, { nom: 'La mairie', icone: '🏛️' },
+  { nom: 'Un mariage', icone: '💍' }, { nom: 'Le club de pétanque', icone: '🎯' }, { nom: 'La bibliothèque', icone: '📚' },
+  { nom: 'Une jeune start-up', icone: '💻' }, { nom: 'La chorale du quartier', icone: '🎶' }, { nom: 'Le marché du samedi', icone: '🧺' },
+];
+// Pendant l'absence (vraies heures) : si une équipe est là, le café tourne au ralenti. Plafond de 4 h, à partir de 15 min.
+export const ABSENCE = { min: .25, max: 4, part: .3 };
+// Les visiteurs rares : un par jour au plus, à collectionner dans l'album du Carnet. 3D : accessoire et couleurs d'habit.
+export const VISITEURS = [
+  { id: 'chanteur', nom: 'Un chanteur célèbre', qui: 'une star de la chanson', icone: '🎤', accessoire: 'lunettes', habit: 0x1E1E2A, cheveux: 0x2B1B12, peau: 0xE8B892, rep: 3.4,
+    phrase: 'Chut… je suis incognito. Un double espresso, s’il vous plaît.', cadeau: { notoriete: .12 }, effet: 'Il poste une photo de ton café : notoriété +6 %.' },
+  { id: 'influenceuse', nom: 'Une influenceuse', qui: 'une influenceuse', icone: '📸', accessoire: 'casque', habit: 0xF28AB2, cheveux: 0xE9C46A, peau: 0xF2C9A5, rep: 3,
+    phrase: 'Attends, je prends la tasse en photo avant de boire !', cadeau: { notoriete: .08 }, effet: 'Une story sur ton café : notoriété +4 %.' },
+  { id: 'touristes', nom: 'Un touriste japonais', qui: 'un touriste en voyage', icone: '🗾', accessoire: 'casque', habit: 0x4FA3E0, cheveux: 0x1E1E1E, peau: 0xF0CDA8, rep: 0,
+    phrase: 'Oishii ! Le meilleur café de mon voyage en France.', cadeau: { argent: 60 }, effet: 'Un gros pourboire : +60 €.' },
+  { id: 'chef', nom: 'Un grand chef', qui: 'un chef étoilé', icone: '👨‍🍳', accessoire: 'beret', habit: 0xF4F1EA, cheveux: 0x6B4A35, peau: 0xF2C9A5, rep: 3.8,
+    phrase: 'Hmm. Belle extraction. Je reviendrai avec ma brigade.', cadeau: { avis: 20 }, effet: 'Il en parle autour de lui : +20 avis.' },
+  { id: 'maire', nom: 'Madame la maire', qui: 'la maire de la ville', icone: '🏛️', accessoire: 'lunettes', habit: 0x2E4A7A, cheveux: 0x8A8A8A, peau: 0xE8B892, rep: 3.5,
+    phrase: 'Votre café fait vivre la rue. Continuez comme ça !', cadeau: { argent: 150 }, effet: 'Une petite subvention du quartier : +150 €.' },
+  { id: 'cycliste', nom: 'Un coureur du Tour', qui: 'un coureur cycliste', icone: '🚴', accessoire: 'velo', habit: 0xFFD34A, cheveux: 0x4A2E1F, peau: 0xC99A78, rep: 0,
+    phrase: 'Un café serré, et je repars : il me reste 80 kilomètres !', cadeau: { argent: 40 }, effet: 'Un pourboire de champion : +40 €.' },
+  { id: 'peintre', nom: 'Une artiste peintre', qui: 'une artiste', icone: '🎨', accessoire: 'beret', habit: 0xB48EC9, cheveux: 0xC0392B, peau: 0xF5D3B8, rep: 3.2,
+    phrase: 'La lumière ici est parfaite. Je peux revenir peindre ?', cadeau: { avis: 12 }, effet: 'Elle expose une toile de ton café : +12 avis.' },
+  { id: 'astronaute', nom: 'Une astronaute', qui: 'une astronaute en permission', icone: '🚀', accessoire: 'lunettes', habit: 0xE8E8EE, cheveux: 0x2B1B12, peau: 0xC99A78, rep: 4,
+    phrase: 'Six mois sans un vrai café… vous n’imaginez pas.', cadeau: { notoriete: .15 }, effet: 'Elle en parle à la télé : notoriété +8 %.' },
+  { id: 'detective', nom: 'Un détective privé', qui: 'un détective en filature', icone: '🕵️', accessoire: 'beret', habit: 0x6B5A4E, cheveux: 0x1E1E1E, peau: 0xF2C9A5, rep: 0, meteo: 'pluie',
+    phrase: 'Je n’ai rien vu, rien entendu. Un noir, sans sucre.', cadeau: { argent: 50 }, effet: 'Un pourboire discret : +50 €.' },
+  { id: 'pere-noel', nom: 'Un monsieur à barbe blanche', qui: 'un visiteur très pressé', icone: '🎅', accessoire: 'beret', habit: 0xC0392B, cheveux: 0xF4F1EA, peau: 0xF5D3B8, rep: 0, meteo: 'froid',
+    phrase: 'Un chocolat chaud, vite : j’ai une grosse tournée ce soir.', cadeau: { argent: 100 }, effet: 'Un cadeau sous la tasse : +100 €.' },
+];
+export const VISITE_RARE = { chance: .03, nouveau: .7, xp: 40 };
+
+// =================== Grains d'or, missions du jour, marché et cartes ===================
+// Les grains d'or ne s'achètent jamais avec de l'argent réel : ils se gagnent en jouant.
+export const OR = { mission: [6, 8, 10], journeeParfaite: 10, defi: 5, commande: 2, niveau: 5, coffre: 15, visiteur: 3, depart: 20 };
+// Trois missions à chaque journée de jeu (tirées à l'ouverture)
+export const MISSIONS = { nombre: 3, depuisJour: 1 };
+// Rareté : couleur, poids du bonus, et grains d'or rendus au recyclage
+export const RARETES = {
+  commune: { nom: 'Commune', couleur: '#9AA3AD', recyclage: 3 },
+  rare: { nom: 'Rare', couleur: '#3F8FE0', recyclage: 8 },
+  epique: { nom: 'Épique', couleur: '#9B59D0', recyclage: 20 },
+  legendaire: { nom: 'Légendaire', couleur: '#F0A81E', recyclage: 50 },
+};
+// Fusion : 3 cartes identiques font une carte du niveau suivant (bonus × 1,6 puis × 2,2)
+export const CARTES_NIVEAUX = { max: 3, mult: [1, 1.6, 2.2], fusion: 3 };
+// Emplacements de cartes actives selon le niveau du café
+export const EMPLACEMENTS = [{ niveau: 1 }, { niveau: 10 }, { niveau: 20 }];
+// Effets possibles : clients, prix (prix juste), gout, bar, moulin, salle, reserve, grain (prix du grain), loyer, commandes (primes), or (grains d'or gagnés)
+export const EFFETS_CARTES = {
+  clients: 'de clients', prix: 'sur le prix juste', gout: 'de goût', bar: 'de vitesse au bar', moulin: 'de vitesse au moulin', salle: 'de service en salle',
+  reserve: 'de place en réserve', grain: 'sur le prix du grain', loyer: 'sur le loyer', commandes: 'sur les primes de commande', or: 'de grains d’or gagnés',
+};
+export const CARTES = [
+  { id: 'tablier', nom: 'Le tablier taché', icone: '🧑‍🍳', rarete: 'commune', effet: 'salle', valeur: .04 },
+  { id: 'cuillere', nom: 'La cuillère en bois', icone: '🥄', rarete: 'commune', effet: 'gout', valeur: .03 },
+  { id: 'jute', nom: 'Le sac de jute', icone: '🛍️', rarete: 'commune', effet: 'reserve', valeur: .06 },
+  { id: 'craie', nom: 'La craie d’ardoise', icone: '🖍️', rarete: 'commune', effet: 'clients', valeur: .03 },
+  { id: 'moulinMain', nom: 'Le moulin à main', icone: '⚙️', rarete: 'commune', effet: 'moulin', valeur: .05 },
+  { id: 'tasseEbrechee', nom: 'La tasse ébréchée', icone: '☕', rarete: 'commune', effet: 'prix', valeur: .02 },
+  { id: 'pigeon', nom: 'Le pigeon du quartier', icone: '🐦', rarete: 'commune', effet: 'or', valeur: .05 },
+  { id: 'ticket', nom: 'Le ticket de caisse', icone: '🧾', rarete: 'commune', effet: 'commandes', valeur: .06 },
+  { id: 'bialetti', nom: 'La cafetière italienne', icone: '🫖', rarete: 'rare', effet: 'bar', valeur: .07 },
+  { id: 'latteArt', nom: 'Le cœur en latte art', icone: '🤍', rarete: 'rare', effet: 'prix', valeur: .04 },
+  { id: 'torrefacteur', nom: 'Le petit torréfacteur', icone: '🔥', rarete: 'rare', effet: 'gout', valeur: .06 },
+  { id: 'veloCargo', nom: 'Le vélo cargo', icone: '🚲', rarete: 'rare', effet: 'clients', valeur: .05 },
+  { id: 'planteVerte', nom: 'Le grand ficus', icone: '🪴', rarete: 'rare', effet: 'salle', valeur: .07 },
+  { id: 'sacMoka', nom: 'Le sac de Moka', icone: '🌰', rarete: 'rare', effet: 'grain', valeur: .06 },
+  { id: 'carnetCommandes', nom: 'Le carnet de commandes', icone: '📒', rarete: 'rare', effet: 'commandes', valeur: .12 },
+  { id: 'levaDoree', nom: 'La machine à levier dorée', icone: '🏆', rarete: 'epique', effet: 'bar', valeur: .12 },
+  { id: 'grainGeisha', nom: 'Le grain Geisha', icone: '🌸', rarete: 'epique', effet: 'gout', valeur: .1 },
+  { id: 'critique', nom: 'L’étoile du guide', icone: '⭐', rarete: 'epique', effet: 'prix', valeur: .07 },
+  { id: 'terrasseSoleil', nom: 'La terrasse au soleil', icone: '☀️', rarete: 'epique', effet: 'clients', valeur: .08 },
+  { id: 'bail', nom: 'Le bail signé', icone: '📜', rarete: 'epique', effet: 'loyer', valeur: .12 },
+  { id: 'tasseMamie', nom: 'La tasse de mamie Odette', icone: '👵', rarete: 'legendaire', effet: 'clients', valeur: .12 },
+  { id: 'grainOr', nom: 'Le grain d’or', icone: '✨', rarete: 'legendaire', effet: 'or', valeur: .4 },
+  { id: 'champion', nom: 'Le champion du monde', icone: '🥇', rarete: 'legendaire', effet: 'bar', valeur: .18 },
+  { id: 'machine1974', nom: 'La machine de 1974', icone: '📻', rarete: 'legendaire', effet: 'gout', valeur: .15 },
+];
+// Les caisses du marché : prix en grains d'or et chances de chaque rareté (affichées au joueur)
+export const CAISSES = [
+  { id: 'carton', nom: 'Caisse en carton', icone: '📦', prix: 30, chances: { commune: 70, rare: 24, epique: 5, legendaire: 1 } },
+  { id: 'bois', nom: 'Caisse en bois', icone: '🧰', prix: 80, chances: { commune: 40, rare: 40, epique: 16, legendaire: 4 } },
+  { id: 'or', nom: 'Coffre doré', icone: '👑', prix: 200, chances: { commune: 0, rare: 50, epique: 38, legendaire: 12 } },
+];
 
 // =================== Revenir le lendemain (jours réels) ===================
 // Le courrier de mamie : une lettre par jour réel où l'on joue, avec un petit cadeau. Rater un jour ne fait rien perdre :
